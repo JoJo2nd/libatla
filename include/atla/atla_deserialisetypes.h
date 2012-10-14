@@ -1,8 +1,8 @@
 /********************************************************************
 
-	filename: 	atla_debug.h	
+	filename: 	atla_deserialisetypes.h	
 	
-	Copyright (c) 6:8:2012 James Moran
+	Copyright (c) 14:10:2012 James Moran
 	
 	This software is provided 'as-is', without any express or implied
 	warranty. In no event will the authors be held liable for any damages
@@ -26,31 +26,20 @@
 *********************************************************************/
 #pragma once
 
-#ifndef ATLA_DEBUG_H__
-#define ATLA_DEBUG_H__
-
-#include "atla_config.h"
+#ifndef ATLA_DESERIALISETYPES_H__
+#define ATLA_DESERIALISETYPES_H__
 
 #ifdef __cplusplus
 extern "C" {
 #endif//
 
-#if ATAL_USE_ASSERT
+typedef struct atSerialisedObjectHeader
+{
 
-#   define atAssertFail(msg, ...)
-#   define atAssert(cond, msg, ...)
-
-#else
-
-#   define atAssertFail(msg, ...)
-#   define atAssert(cond, msg, ...)
-
-#endif
-
-#define atCompileTimeAssert(cond, msg)
+} atSerialisedObjectHeader_t;
 
 #ifdef __cplusplus
 } //extern "C"
 #endif//
 
-#endif // ATLA_DEBUG_H__
+#endif // ATLA_DESERIALISETYPES_H__

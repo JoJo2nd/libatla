@@ -24,31 +24,46 @@
 	distribution.
 
 *********************************************************************/
+#pragma once
 
 #ifndef ATLA_IOSTREAM_H__
 #define ATLA_IOSTREAM_H__
 
-namespace atla
+#ifdef __cplusplus
+extern "C" {
+#endif//
+
+enum atSeekOffset
 {
-    enum atSeekOffset
-    {
-        eSeekOffset_Begin,
-        eSeekOffset_Current,
-        eSeekOffset_End
-    };
+    eSeekOffset_Begin,
+    eSeekOffset_Current,
+    eSeekOffset_End
+};
 
-    //////////////////////////////////////////////////////////////////////////
-    //////////////////////////////////////////////////////////////////////////
-    //////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
 
-    class atIOStream
-    {
-    public:
-        virtual atuint32    		read( void* pBuffer, atuint32 size ) = 0;
-        virtual atuint32			write( const void* pBuffer, atuint32 size ) = 0;
-        virtual atuint32    		seek( atuint32 offset, atSeekOffset offset ) = 0;
-        virtual atuint32    		tell() = 0;
-    };
-}
+typedef atuint32 ATLA_CALLBACK (*atStreamReadProc)(void* pBuffer, atuint32 size, void* user);
+typedef atuint32 ATLA_CALLBACK (*atStreamWriteProc)(const void* pBuffer, atuint32 size, void* user);
+typedef atuint32 ATLA_CALLBACK (*atStreaSeekProc)(atuint32 offset, atSeekOffset offset, void* user);
+typedef atuint32 ATLA_CALLBACK (*atStreamTellProc)(void* user);
+
+//////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+
+typedef struct atIOStream
+{
+    atStreamReadProc    readProc_;
+    atStreamWriteProc   writeProc_;
+    atStreaSeekProc     seekProc_;
+    atStreamTellProc    tellProc_;
+    void*               user_;    
+} atIOStream_t;
+
+#ifdef __cplusplus
+} //extern "C"
+#endif//
 
 #endif // ATLA_IOSTREAM_H__

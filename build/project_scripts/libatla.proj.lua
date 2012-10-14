@@ -1,8 +1,8 @@
     project "libatla"
         location (ProjectDir)
         kind "StaticLib"
-        language "C++"
-        files {"../../include/**.h","../../src/**.cpp"}
+        language "C"
+        files {"../../include/**.h","../../src/**.c"}
         defines {CommonDefines,SharedLibDefines}
         defines {"COMPILE_LIB_ATLA"}
 		includedirs {"../../include"}

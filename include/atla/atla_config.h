@@ -24,9 +24,14 @@
 	distribution.
 
 *********************************************************************/
+#pragma once
 
 #ifndef ATLA_CONFIG_H__
 #define ATLA_CONFIG_H__
+
+#ifdef __cplusplus
+extern "C" {
+#endif//
 
 #if defined (_DEBUG)
 #   define ATLA_DEBUG
@@ -34,11 +39,18 @@
 #   define ATLA_RELEASE
 #endif
 
+#define ATLA_CALLBACK   __cdecl
+#define ATLA_API        __cdecl
+
 //#define ATLA_USE_ASSERT (0)
 
 #if !defined (ATLA_USE_ASSERT)
 #   define ATLA_USE_ASSERT (1)
 #endif 
+
+#ifdef __cplusplus
+} //extern "C"
+#endif//
 
 #include "atla_types.h"
 

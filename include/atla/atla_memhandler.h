@@ -24,19 +24,32 @@
 	distribution.
 
 *********************************************************************/
+#pragma once
+
 #ifndef ATLA_MEMHANDLER_H__
 #define ATLA_MEMHANDLER_H__
 
 #include "atla_config.h"
 
-namespace atla
+#ifdef __cplusplus
+extern "C" {
+#endif//
+
+typedef void* ATLA_CALLBACK  (*atMallocProc)(atsize_t size, void* user);
+typedef void  ATLA_CALLBACK  (*atFreeProc)(void* ptr, void* user);
+
+typedef struct atMemoryHandler
 {
-    class atMemoryHandler
-    {
-    public:
-        virtual void*       atMalloc(atsize_t size) = 0;
-        virtual void        atFree(void* ptr) = 0;
-    };
-}
+    atMallocProc    memAlloc_;
+    atFreeProc      memFree_;
+    void*           memUser_;
+    atMallocProc    tempAlloc_;
+    atFreeProc      tempAlloc_;
+    void*           tempUser_;
+} atMemoryHandler_t;
+
+#ifdef __cplusplus
+} //extern "C"
+#endif//
 
 #endif // ATLA_MEMHANDLER_H__

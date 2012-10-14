@@ -24,9 +24,14 @@
 	distribution.
 
 *********************************************************************/
+#pragma once
 
 #ifndef ATLA_TYPES_H__
 #define ATLA_TYPES_H__
+
+#ifdef __cplusplus
+extern "C" {
+#endif//
 
 typedef size_t              atsize_t;
 typedef unsigned long long  atuint64;
@@ -43,5 +48,9 @@ typedef atuint8             atbyte;
 typedef atint8              atchar;
 typedef bool                atbool;
 
+
+#ifdef __cplusplus
+} //extern "C"
+#endif//
 
 #endif // ATLA_TYPES_H__
