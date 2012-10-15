@@ -1,8 +1,8 @@
 /********************************************************************
 
-	filename: 	atla_deserialisetypes.h	
+	filename: 	atla.h	
 	
-	Copyright (c) 14:10:2012 James Moran
+	Copyright (c) 15:10:2012 James Moran
 	
 	This software is provided 'as-is', without any express or implied
 	warranty. In no event will the authors be held liable for any damages
@@ -24,22 +24,16 @@
 	distribution.
 
 *********************************************************************/
+
 #pragma once
 
-#ifndef ATLA_DESERIALISETYPES_H__
-#define ATLA_DESERIALISETYPES_H__
+#ifndef ATLA_H__
+#define ATLA_H__
 
-#ifdef __cplusplus
-extern "C" {
-#endif//
+/*
+ * Main Include for alta lib
+ **/
 
-typedef struct atSerialisedObjectHeader
-{
+#include "atla_config.h"
 
-} atSerialisedObjectHeader_t;
-
-#ifdef __cplusplus
-} //extern "C"
-#endif//
-
-#endif // ATLA_DESERIALISETYPES_H__
+#endif // ATLA_H__

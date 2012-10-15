@@ -1,8 +1,8 @@
 /********************************************************************
 
-	filename: 	atla_types.h	
+	filename: 	atla_datadeftypes.h	
 	
-	Copyright (c) 6:8:2012 James Moran
+	Copyright (c) 15:10:2012 James Moran
 	
 	This software is provided 'as-is', without any express or implied
 	warranty. In no event will the authors be held liable for any damages
@@ -24,47 +24,12 @@
 	distribution.
 
 *********************************************************************/
+
 #pragma once
 
-#ifndef ATLA_TYPES_H__
-#define ATLA_TYPES_H__
+#ifndef ATLA_DATADEFTYPES_H__
+#define ATLA_DATADEFTYPES_H__
 
-#include <stdlib.h>
+typedef void* ATLA_API (*atDataTypeAlloc)(atUUID_t /*typeID*/, void* /*user*/);
 
-#ifdef __cplusplus
-extern "C" {
-#endif//
-
-typedef size_t              atsize_t;
-typedef unsigned long long  atuint64;
-typedef signed long long    atint64;
-typedef unsigned long       atuint32;
-typedef signed long         atint32;
-typedef unsigned int        atuint;
-typedef signed int          atint;
-typedef unsigned short      atuint16;
-typedef signed short        atint16;
-typedef signed char         atint8;
-typedef unsigned char       atuint8;
-typedef atuint8             atbyte;
-typedef atint8              atchar;
-typedef atuint8             atbool;
-typedef struct atUUID
-{
-    atchar  uuid[16];
-} atUUID_t;
-
-typedef enum atTypeID
-{
-    atAtomicType = 1,
-    atCString,
-    atUserType,
-
-    atTypeInvalid = ~0U
-} atTypeID;
-
-#ifdef __cplusplus
-} //extern "C"
-#endif//
-
-#endif // ATLA_TYPES_H__
+#endif // ATLA_DATADEFTYPES_H__
