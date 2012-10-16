@@ -1,8 +1,8 @@
 /********************************************************************
 
-	filename: 	atla.h	
+	filename: 	atla_datablob.h	
 	
-	Copyright (c) 15:10:2012 James Moran
+	Copyright (c) 16:10:2012 James Moran
 	
 	This software is provided 'as-is', without any express or implied
 	warranty. In no event will the authors be held liable for any damages
@@ -24,35 +24,34 @@
 	distribution.
 
 *********************************************************************/
-
 #pragma once
 
-#ifndef ATLA_H__
-#define ATLA_H__
+#ifndef ATLA_DATABLOB_H__
+#define ATLA_DATABLOB_H__
 
-/*
- * Main Include for alta lib
- **/
+typedef struct atUsedTypeData
+{
+    ATLA_LINKED_LIST_HEADER();
+    atDataTypeDesc*     typeDesc_;
+};
 
-#include "atla_config.h"
+typedef struct atTypeDataBlob
+{
+    ATLA_LINKED_LIST_HEADER();
+    atDataTypeDesc*     typeDesc_;
+    void*               pointer_;
+    atuint32            dataSize_;
+    atuint32            objectID_;
+};
 
-#ifdef __cplusplus
-extern "C" {
-#endif//
+typedef struct atAtlaDataBlob
+{
+    atAtlaFileHeader_t  header_;
+    atuint32            statusCode_;
+    atMemoryHandler_t*  memHandler_;
+    atIOStream_t*       iostream_;
+    atUsedTypeData*     usedTypesDescHead_;
+    atTypeDataBlob*     typeBlobsHead_;
+}atAtlaDataBlob_t;
 
-typedef struct atAtlaDataBlob_t;
-
-atAtlaDataBlob_t* ATLA_API atCreateAtlaDataBlob(atMemoryHandler_t*);
-void ATLA_API atDestroyAtlaDataBlob(atAtlaDataBlob_t*);
-atuint ATLA_API atReadDataBlob(atAtlaDataBlob_t*, atIOStream_t*);
-atuint ATLA_API atWriteDataBlob(atAtlaDataBlob_t*, atIOStream_t*);
-atuint ATLA_API atAddTypeBlob(atAtlaDataBlob_t*, const atchar* /*objectname*/, atDataTypeDesc* /*typedef*/, void* /*data*/);
-atuint ATLA_API atGetDataBlobCount(atAtlaDataBlob_t*);
-void* ATLA_API atGetDataBlobByIndex(atAtlaDataBlob_t*, atuint);
-void* ATLA_API atGetTypeBlobDataByUUID(atAtlaDataBlob_t*, const atchar* /*objectname*/);
-
-#ifdef __cplusplus
-} //extern "C"
-#endif//
-
-#endif // ATLA_H__
+#endif // ATLA_DATABLOB_H__

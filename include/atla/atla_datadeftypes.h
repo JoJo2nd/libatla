@@ -30,6 +30,37 @@
 #ifndef ATLA_DATADEFTYPES_H__
 #define ATLA_DATADEFTYPES_H__
 
-typedef void* ATLA_API (*atDataTypeAlloc)(atUUID_t /*typeID*/, void* /*user*/);
+#ifdef __cplusplus
+extern "C" {
+#endif//
+
+
+typedef void* ATLA_API (*atDataTypeAllocProc)(atUUID_t /*typeID*/, void* /*user*/);
+/* For future versions? */
+typedef void* ATLA_API (*atDataTypeDefaultProc)(atUUID_t /*typeID*/, void* /*dst*/, void* /*user*/);
+
+typedef struct atDataElementDesc
+{
+    atUUID_t                id_;
+    atuint32                size_;
+    atuint32                offset_;
+    atuint32                arrayCount_;
+    struct atDataTypeDesc*  nested_;
+    atbool                  atomicType_ : 1;
+} atDataElementDesc_t;
+
+typedef struct atDataTypeDesc
+{
+    atDataTypeAllocProc     allocFunc_;
+    atUUID_t                id_;
+    atuint32                elementCount_;
+    atDataElementDesc_t*    elementArray_;
+    atbool                  atomictype_ : 1;
+} atDataTypeDesc_t;
+
+#ifdef __cplusplus
+} //extern "C"
+#endif//
+
 
 #endif // ATLA_DATADEFTYPES_H__
