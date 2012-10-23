@@ -1,8 +1,8 @@
 /********************************************************************
 
-	filename: 	atla_memhandler.h	
+	filename: 	atla_datadeftypes.h	
 	
-	Copyright (c) 6:8:2012 James Moran
+	Copyright (c) 15:10:2012 James Moran
 	
 	This software is provided 'as-is', without any express or implied
 	warranty. In no event will the authors be held liable for any damages
@@ -24,32 +24,49 @@
 	distribution.
 
 *********************************************************************/
+
 #pragma once
 
-#ifndef ATLA_MEMHANDLER_H__
-#define ATLA_MEMHANDLER_H__
+#ifndef ATLA_DATADEFTYPES_H__
+#define ATLA_DATADEFTYPES_H__
 
 #include "atla/atla_config.h"
+#include "atla/atla_utils.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif//
 
-typedef void* (ATLA_CALLBACK *atMallocProc)(atsize_t size, void* user);
-typedef void  (ATLA_CALLBACK *atFreeProc)(void* ptr, void* user);
+/* For future versions? */
+typedef void* (ATLA_CALLBACK *atDataTypeAllocProc)(atUUID_t /*typeID*/, void* /*user*/);
+typedef void* (ATLA_CALLBACK *atDataTypeDefaultProc)(atUUID_t /*typeID*/, void* /*dst*/, void* /*user*/);
 
-typedef struct atMemoryHandler
+typedef struct atSchemaElement
 {
-    atMallocProc    memAlloc_;
-    atFreeProc      memFree_;
-    void*           memUser_;
-    atMallocProc    tempAlloc_;
-    atFreeProc      tempFree_;
-    void*           tempUser_;
-} atMemoryHandler_t;
+    atUUID_t                id_;
+    atchar*                 name_;
+    atuint32                size_;
+    atuint32                offset_;
+    atuint32                arrayCount_;
+    struct atDataSchema*    nested_;
+    atbool                  atomicType_ : 1;
+    atbool                  pointer_ : 1;
+} atSchemaElement_t;
+
+typedef struct atDataSchema
+{
+    ATLA_LINKED_LIST_HEADER();
+    atUUID_t                id_;
+    atchar*                 name_;
+    atuint32                typeSize_;
+    atuint32                elementCount_;
+    atSchemaElement_t*      elementArray_;
+    atbool                  atomictype_ : 1;
+} atDataSchema_t;
 
 #ifdef __cplusplus
 } //extern "C"
 #endif//
 
-#endif // ATLA_MEMHANDLER_H__
+
+#endif // ATLA_DATADEFTYPES_H__

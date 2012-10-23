@@ -40,7 +40,7 @@
 #ifndef ATLA_MD5_H__
 #define ATLA_MD5_H__
 
-#include "atla_config.h"
+#include "atla/atla_config.h"
 
 #ifdef __cplusplus
 extern "C" {

@@ -207,7 +207,7 @@ void ATLA_API atResultMD5(atuint8* digest, at_md5_ctxt* ctxt)
 
 void ATLA_API atResultMD5ToUUID(atUUID_t* digest, at_md5_ctxt* ctxt)
 {
-    atResultMD5(digest->uuid, ctxt);
+    atResultMD5(digest->uuid_, ctxt);
 }
 
 atuint32 X[16];

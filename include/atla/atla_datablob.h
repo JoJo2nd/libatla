@@ -29,29 +29,40 @@
 #ifndef ATLA_DATABLOB_H__
 #define ATLA_DATABLOB_H__
 
-typedef struct atUsedTypeData
-{
-    ATLA_LINKED_LIST_HEADER();
-    atDataTypeDesc*     typeDesc_;
-};
+#include "atla/atla_config.h"
+#include "atla/atla_utils.h"
+#include "atla/atla_schema.h"
+#include "atla/atla_serialisationtypes.h"
+#include "atla/atla_memhandler.h"
+#include "atla/atla_iostream.h"
 
-typedef struct atTypeDataBlob
+typedef struct atAtlaContext atAtlaContext_t;
+
+typedef struct atUsedSchema
 {
     ATLA_LINKED_LIST_HEADER();
-    atDataTypeDesc*     typeDesc_;
+    atDataSchema_t*    schema_;
+} atUsedSchema_t;
+
+typedef struct atDataBlob
+{
+    ATLA_LINKED_LIST_HEADER();
+    atDataSchema_t*     schema_;
     void*               pointer_;
-    atuint32            dataSize_;
-    atuint32            objectID_;
-};
+    atuint32            typeSizeBytes_;
+    atuint32            elementCount_;
+    atUUID_t            objectID_;
+} atDataBlob_t;
 
 typedef struct atAtlaDataBlob
 {
+    atAtlaContext_t*    ctx_;
     atAtlaFileHeader_t  header_;
     atuint32            statusCode_;
-    atMemoryHandler_t*  memHandler_;
-    atIOStream_t*       iostream_;
-    atUsedTypeData*     usedTypesDescHead_;
-    atTypeDataBlob*     typeBlobsHead_;
-}atAtlaDataBlob_t;
+    atMemoryHandler_t   memHandler_;
+    atIOStream_t        iostream_;
+    atUsedSchema_t*     usedSchemaHead_;
+    atDataBlob_t*       dataBlobsHead_;
+} atAtlaDataBlob_t;
 
 #endif // ATLA_DATABLOB_H__

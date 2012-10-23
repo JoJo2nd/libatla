@@ -1,8 +1,8 @@
 /********************************************************************
 
-	filename: 	atla_iostream.h	
+	filename: 	atla.c	
 	
-	Copyright (c) 6:8:2012 James Moran
+	Copyright (c) 17:10:2012 James Moran
 	
 	This software is provided 'as-is', without any express or implied
 	warranty. In no event will the authors be held liable for any damages
@@ -24,48 +24,50 @@
 	distribution.
 
 *********************************************************************/
-#pragma once
-
-#ifndef ATLA_IOSTREAM_H__
-#define ATLA_IOSTREAM_H__
 
 #include "atla/atla_config.h"
+#include "atla/atla_md5.h"
+#include <string.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif//
+//////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
 
-typedef enum atSeekOffset
+#define ATLA_VERSION_MAJOR    (0)
+#define ATLA_VERSION_MINOR    (1)
+#define ATLA_VERSION_REV      (1)
+
+//////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+
+atuint64 ATLA_API atGetAtlaVersion()
 {
-    eSeekOffset_Begin,
-    eSeekOffset_Current,
-    eSeekOffset_End
-} atSeekOffset;
+    return (((atuint64)(ATLA_VERSION_MAJOR & 0xFFFF) << 48) | ((atuint64)(ATLA_VERSION_MAJOR & 0xFFFF) << 32) | ATLA_VERSION_REV);
+}
 
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
 
-typedef atuint32 (ATLA_CALLBACK *atStreamReadProc)(void* pBuffer, atuint32 size, void* user);
-typedef atuint32 (ATLA_CALLBACK *atStreamWriteProc)(const void* pBuffer, atuint32 size, void* user);
-typedef atuint32 (ATLA_CALLBACK *atStreaSeekProc)(atuint32 offset, atSeekOffset where, void* user);
-typedef atuint32 (ATLA_CALLBACK *atStreamTellProc)(void* user);
-
-//////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////
-
-typedef struct atIOStream
+atUUID_t ATLA_API atBuildAtlaStringUUID(const atchar* str, atuint32 strlen)
 {
-    atStreamReadProc    readProc_;
-    atStreamWriteProc   writeProc_;
-    atStreaSeekProc     seekProc_;
-    atStreamTellProc    tellProc_;
-    void*               user_;    
-} atIOStream_t;
+    atUUID_t uid = {0};
+    at_md5_ctxt md5 = {0};
 
-#ifdef __cplusplus
-} //extern "C"
-#endif//
+    atInitMD5(&md5);
+    atLoopMD5(&md5, str, strlen);
+    atResultMD5ToUUID(&uid, &md5);
 
-#endif // ATLA_IOSTREAM_H__
+    return uid;
+}
+
+//////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+
+atuint ATLA_API atUUIDCmp( atUUID_t* lhs, atUUID_t* rhs )
+{
+    return strncmp(lhs->uuid_, rhs->uuid_, sizeof(atUUID_t));
+}
+

@@ -34,20 +34,29 @@
  * Main Include for alta lib
  **/
 
-#include "atla_config.h"
+#include "atla/atla_config.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif//
 
-typedef struct atAtlaDataBlob_t;
+typedef struct atIOStream atIOStream_t;
+typedef struct atAtlaContext atAtlaContext_t;
+typedef struct atAtlaDataBlob atAtlaDataBlob_t;
+typedef struct atDataSchema atDataSchema_t;
 
-atAtlaDataBlob_t* ATLA_API atCreateAtlaDataBlob(atMemoryHandler_t*);
+atuint64 ATLA_API atGetAtlaVersion();
+atUUID_t ATLA_API atBuildAtlaStringUUID(const atchar* /*str*/, atuint32 /*strlen*/);
+atuint ATLA_API atUUIDCmp(atUUID_t* lhs, atUUID_t* rhs);
+atAtlaContext_t* ATLA_API atCreateAtlaContext(atMemoryHandler_t*);
+atErrorCode ATLA_API atDestroyAtlaContext(atAtlaContext_t*);
+atErrorCode ATLA_API atAddDataSchema(atAtlaContext_t*, atDataSchema_t*);
+atAtlaDataBlob_t* ATLA_API atCreateAtlaDataBlob(atAtlaContext_t*);
 void ATLA_API atDestroyAtlaDataBlob(atAtlaDataBlob_t*);
-atuint ATLA_API atReadDataBlob(atAtlaDataBlob_t*, atIOStream_t*);
-atuint ATLA_API atWriteDataBlob(atAtlaDataBlob_t*, atIOStream_t*);
-atuint ATLA_API atAddTypeBlob(atAtlaDataBlob_t*, const atchar* /*objectname*/, atDataTypeDesc* /*typedef*/, void* /*data*/);
-atuint ATLA_API atGetDataBlobCount(atAtlaDataBlob_t*);
+atErrorCode ATLA_API atDeserialiseDataBlob(atAtlaDataBlob_t*, atIOStream_t*);
+atErrorCode ATLA_API atSerialiseDataBlob(atAtlaDataBlob_t*, atIOStream_t*);
+atErrorCode ATLA_API atAddTypeDataToBlob(atAtlaDataBlob_t*, const atchar* /*objectname*/, const atchar* /*schemaname*/, atuint32 count, void* /*data*/);
+atErrorCode ATLA_API atGetDataBlobCount(atAtlaDataBlob_t*);
 void* ATLA_API atGetDataBlobByIndex(atAtlaDataBlob_t*, atuint);
 void* ATLA_API atGetTypeBlobDataByUUID(atAtlaDataBlob_t*, const atchar* /*objectname*/);
 

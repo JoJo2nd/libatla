@@ -43,22 +43,22 @@ extern "C" {
 #define ATLA_ATOMIC_TYPE    (1<<2)
 #define ATLA_C_STRING_TYPE  (1<<3)
 #define ATLA_USER_TYPE      (1<<4)
+#define ATLA_DATA_REFERENCE (1<<5)
 
 typedef struct atAtlaFileHeader
 {
     atuint32    fourCC_; /* <- ATLA */
-    atuint32    version_;
+    atuint64    version_;
     atuint32    headerSize_;
-
 } atAtlaFileHeader_t;
 
-typedef struct atSerialisedTypeDef
+typedef struct atSerialisedSchema
 {
     atUUID_t    typeID_;
     atuint32    elementCount_;      /* array of atSerialisedTypeElementDef[elementCount_] follows this. */
-}atSerialisedTypeDef_t;
+} atSerialisedSchema_t;
 
-typedef struct atSerialisedTypeElementDef
+typedef struct atSerialisedSchemaElement
 {
     atUUID_t    elementID_;
     atuint32    size_;
@@ -66,7 +66,7 @@ typedef struct atSerialisedTypeElementDef
     atuint32    arraycount_;/* set to 1 for non array types */
     atUUID_t    typeID_;/* UUID of type, only valid if ATLA_USER_TYPE is set in flags_*/
     atuint8     flags_;
-} atSerialisedTypeElementDef_t;
+} atSerialisedSchemaElement_t;
 
 typedef struct atSerialisedObjectHeader
 {

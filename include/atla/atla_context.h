@@ -1,8 +1,8 @@
 /********************************************************************
 
-	filename: 	atla_datadeftypes.h	
+	filename: 	atla_context.h	
 	
-	Copyright (c) 15:10:2012 James Moran
+	Copyright (c) 23:10:2012 James Moran
 	
 	This software is provided 'as-is', without any express or implied
 	warranty. In no event will the authors be held liable for any damages
@@ -24,43 +24,32 @@
 	distribution.
 
 *********************************************************************/
-
 #pragma once
 
-#ifndef ATLA_DATADEFTYPES_H__
-#define ATLA_DATADEFTYPES_H__
+#ifndef ATLA_CONTEXT_H__
+#define ATLA_CONTEXT_H__
+
+#include "atla/atla_config.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif//
 
+typedef struct atDataSchema atDataSchema_t;
+typedef struct atMemoryHandler atMemoryHandler_t;
+typedef struct atDataSchema atDataSchema_t;
 
-typedef void* ATLA_API (*atDataTypeAllocProc)(atUUID_t /*typeID*/, void* /*user*/);
-/* For future versions? */
-typedef void* ATLA_API (*atDataTypeDefaultProc)(atUUID_t /*typeID*/, void* /*dst*/, void* /*user*/);
-
-typedef struct atDataElementDesc
+typedef struct atAtlaContext
 {
-    atUUID_t                id_;
-    atuint32                size_;
-    atuint32                offset_;
-    atuint32                arrayCount_;
-    struct atDataTypeDesc*  nested_;
-    atbool                  atomicType_ : 1;
-} atDataElementDesc_t;
+    atMemoryHandler_t*  memCtx_;
+    atuint              schemaCount_;
+    atDataSchema_t*     schemaHead_;
+} atAtlaContext_t;
 
-typedef struct atDataTypeDesc
-{
-    atDataTypeAllocProc     allocFunc_;
-    atUUID_t                id_;
-    atuint32                elementCount_;
-    atDataElementDesc_t*    elementArray_;
-    atbool                  atomictype_ : 1;
-} atDataTypeDesc_t;
+atDataSchema_t* ATLA_API atContextGetDataSchema(atAtlaContext_t*, atUUID_t* id);
 
 #ifdef __cplusplus
-} //extern "C"
+}//    extern "C"
 #endif//
 
-
-#endif // ATLA_DATADEFTYPES_H__
+#endif // ATLA_CONTEXT_H__
