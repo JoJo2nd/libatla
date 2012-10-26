@@ -137,7 +137,7 @@ atuint ATLA_API atSerialiseDataBlob(atAtlaDataBlob_t* blob)
         }
         else
         {
-            tellof = tdbp->elementSize_*tdbp->elementCount_;
+            tellof += tdbp->elementSize_*tdbp->elementCount_;
         }
         ATLA_IOWRITE(ios, &toc, sizeof(atSerialisedTOC_t));
     }
