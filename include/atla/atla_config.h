@@ -39,6 +39,10 @@ extern "C" {
 #   define ATLA_RELEASE
 #endif
 
+#ifdef ATLA_DEBUG
+#   define ATAL_USE_ASSERT
+#endif
+
 #define ATLA_CALLBACK   __cdecl
 #define ATLA_API        __cdecl
 

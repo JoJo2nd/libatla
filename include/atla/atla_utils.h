@@ -30,6 +30,6 @@
 #define ATLA_UTILS_H__
 
 
-#define ATLA_LINKED_LIST_HEADER() void* next_; void* prev_
+#define ATLA_LINKED_LIST_HEADER(ty) struct ty* next_; struct ty* prev_
 
 #endif // ATLA_UTILS_H__

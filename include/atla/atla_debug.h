@@ -30,20 +30,21 @@
 #define ATLA_DEBUG_H__
 
 #include "atla_config.h"
+#include <assert.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif//
 
-#if ATAL_USE_ASSERT
+#ifdef ATAL_USE_ASSERT
 
-#   define atAssertFail(msg, ...)
-#   define atAssert(cond, msg, ...)
+#   define atAssertFail(msg)
+#   define atAssert(cond) assert(cond)
 
 #else
 
-#   define atAssertFail(msg, ...)
-#   define atAssert(cond, msg, ...)
+#   define atAssertFail(msg)
+#   define atAssert(cond)
 
 #endif
 

@@ -55,7 +55,8 @@ typedef struct atAtlaFileHeader
 typedef struct atSerialisedSchema
 {
     atUUID_t    typeID_;
-    atuint32    elementCount_;      /* array of atSerialisedTypeElementDef[elementCount_] follows this. */
+    atuint32    dataSize_;          
+    atuint32    elementCount_;      /* array of atSerialisedTypeElementDef[elementCount_] follows this. 0 is for atomic types*/
 } atSerialisedSchema_t;
 
 typedef struct atSerialisedSchemaElement
@@ -68,13 +69,19 @@ typedef struct atSerialisedSchemaElement
     atuint8     flags_;
 } atSerialisedSchemaElement_t;
 
+typedef struct atSerialisedTOC
+{
+    atUUID_t objectID_;
+    atuint64 fileoffset_;
+} atSerialisedTOC_t;
+
 typedef struct atSerialisedObjectHeader
 {
     atUUID_t    objectID_;
     atUUID_t    typeID_;
-    atuint32    referenceID_;
-    atuint32    count_;
-    atuint32    diskSize_;
+    atuint32    count_;     /* if top bit of count_ is set, this is a raw block and 
+                            typeID is not an ID but a size. Bad dual meaning but 
+                            we want atSerialisedObjectHeader to be small*/
 } atSerialisedObjectHeader_t;
 
 #pragma pack(pop)

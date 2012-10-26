@@ -43,9 +43,6 @@ typedef struct atMemoryHandler
     atMallocProc    memAlloc_;
     atFreeProc      memFree_;
     void*           memUser_;
-    atMallocProc    tempAlloc_;
-    atFreeProc      tempFree_;
-    void*           tempUser_;
 } atMemoryHandler_t;
 
 #ifdef __cplusplus

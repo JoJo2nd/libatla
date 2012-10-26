@@ -47,12 +47,16 @@ typedef signed short        atint16;
 typedef signed char         atint8;
 typedef unsigned char       atuint8;
 typedef atuint8             atbyte;
-typedef atint8              atchar;
+typedef char                atchar;
 typedef atuint8             atbool;
-typedef struct atUUID
+typedef atuint64            atUUID_t;
+/*typedef struct atUUID
 {
-    atchar  uuid_[16];
-} atUUID_t;
+    union {
+        atuint64    i64[2];
+        atchar      i8[16];
+    } uuid_;
+} atUUID_t;*/
 
 typedef enum atTypeID
 {
@@ -60,8 +64,18 @@ typedef enum atTypeID
     atCString,
     atUserType,
 
-    atTypeInvalid = ~0U
+    atTypeInvalid = -1
 } atTypeID;
+
+//////////////////////////////////////////////////////////////////////////
+// IO access /////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+
+typedef enum atCreateFlags
+{
+    ATLA_READ       = 1,
+    ATLA_WRITE      = 1 << 1
+} atCreateFlags;
 
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
@@ -75,16 +89,18 @@ typedef enum atTypeID
 
 typedef enum atErrorCode
 {
-    ATLA_EOK                = 0,
-    ATLA_NOMEM              = -1,
-    ATLA_BADFILE            = -2,
-    ATLA_DUPLICATE_DATA     = -3,
-    ATLA_NOTSUPPORTED       = -4,
-    ATLA_EPOINTERNOTFOUND   = -5,
+    ATLA_EOK                    = 0,
+    ATLA_NOMEM                  = -1,
+    ATLA_BADFILE                = -2,
+    ATLA_DUPLICATE_DATA         = -3,
+    ATLA_NOTSUPPORTED           = -4,
+    ATLA_EPOINTERNOTFOUND       = -5,
+    ATLA_EBADSCHEMAID           = -6,
+    ATLA_ENESTEDSCHEMANOTFOUND  = -7,
 } atErrorCode;
 
 #ifdef __cplusplus
 } //extern "C"
-#endif//
+#endif
 
 #endif // ATLA_TYPES_H__

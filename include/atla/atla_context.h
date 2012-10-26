@@ -46,7 +46,7 @@ typedef struct atAtlaContext
     atDataSchema_t*     schemaHead_;
 } atAtlaContext_t;
 
-atDataSchema_t* ATLA_API atContextGetDataSchema(atAtlaContext_t*, atUUID_t* id);
+atDataSchema_t* ATLA_API atContextGetDataSchema(atAtlaContext_t*, atUUID_t id);
 
 #ifdef __cplusplus
 }//    extern "C"

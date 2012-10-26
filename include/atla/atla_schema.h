@@ -32,6 +32,8 @@
 
 #include "atla/atla_config.h"
 #include "atla/atla_utils.h"
+#include "atla/atla_debug.h"
+#include <string.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -48,25 +50,126 @@ typedef struct atSchemaElement
     atuint32                size_;
     atuint32                offset_;
     atuint32                arrayCount_;
-    struct atDataSchema*    nested_;
-    atbool                  atomicType_ : 1;
-    atbool                  pointer_ : 1;
+    atUUID_t                nestedID_;
 } atSchemaElement_t;
 
 typedef struct atDataSchema
 {
-    ATLA_LINKED_LIST_HEADER();
+    ATLA_LINKED_LIST_HEADER(atDataSchema);
     atUUID_t                id_;
     atchar*                 name_;
     atuint32                typeSize_;
+    atuint32                serialisedSize_;
     atuint32                elementCount_;
     atSchemaElement_t*      elementArray_;
-    atbool                  atomictype_ : 1;
 } atDataSchema_t;
+
+
+#define ATLA_ELESIZE(y, x) (sizeof(((y*)0)->x))
+#define ATLA_ELEOFFSET(y, x) ((atuint32)&(((y*)0)->x))
+#define ATLA_CALC_COUNT(y, x) ((sizeof(((y*)0)->x))/(sizeof(((((y*)0)->x))[0])))
+#define ATLA_ELESIZEA(y, x) (sizeof(((y*)0)->x[0]))
+
+#define ATLA_INIT_SCHEMA(stype)\
+    schema_##stype.id_ =  atBuildAtlaStringUUID(#stype,strlen(#stype));\
+    schema_##stype.name_ = #stype;\
+    schema_##stype.typeSize_ = sizeof(stype);\
+    schema_##stype.serialisedSize_ = 0;\
+
+#define ATLA_INIT_SCHEMA_ELEMENT(ele, stype, ename)\
+    elements_##stype[ele].id_ = atBuildAtlaStringUUID(#ename,strlen(#ename));\
+    elements_##stype[ele].name_ = #ename;\
+    elements_##stype[ele].size_ = ATLA_ELESIZE(stype,ename);\
+    elements_##stype[ele].offset_ = ATLA_ELEOFFSET(stype,ename);\
+    elements_##stype[ele].arrayCount_ = 1;\
+    elements_##stype[ele].nestedID_ = 0;\
+    atAssert(ele < (sizeof(elements_##stype)/sizeof(elements_##stype[0]))); ++ele;
+
+#define ATLA_INIT_SCHEMA_ELEMENTA(ele, stype, ename)\
+    elements_##stype[ele].id_ = atBuildAtlaStringUUID(#ename,strlen(#ename));\
+    elements_##stype[ele].name_ = #ename;\
+    elements_##stype[ele].size_ = ATLA_ELESIZEA(stype,ename);\
+    elements_##stype[ele].offset_ = ATLA_ELEOFFSET(stype,ename);\
+    elements_##stype[ele].arrayCount_ = ATLA_CALC_COUNT(stype, ename);\
+    elements_##stype[ele].nestedID_ = 0;\
+    atAssert(ele < (sizeof(elements_##stype)/sizeof(elements_##stype[0]))); ++ele;
+
+#define ATLA_INIT_SCHEMA_ELEMENT_NESTED(ele, stype, ename, nname)\
+    elements_##stype[ele].id_ = atBuildAtlaStringUUID(#ename,strlen(#ename));\
+    elements_##stype[ele].name_ = #ename;\
+    elements_##stype[ele].size_ = ATLA_ELESIZE(stype,ename);\
+    elements_##stype[ele].offset_ = ATLA_ELEOFFSET(stype,ename);\
+    elements_##stype[ele].arrayCount_ = 1;\
+    elements_##stype[ele].nestedID_ = atBuildAtlaStringUUID(#nname,strlen(#nname));\
+    atAssert(ele < (sizeof(elements_##stype)/sizeof(elements_##stype[0]))); ++ele;
+
+#define ATLA_INIT_SCHEMA_ELEMENT_NESTEDA(ele, stype, ename, nname)\
+    elements_##stype[ele].id_ = atBuildAtlaStringUUID(#ename,strlen(#ename));\
+    elements_##stype[ele].name_ = #ename;\
+    elements_##stype[ele].size_ = ATLA_ELESIZEA(stype,ename);\
+    elements_##stype[ele].offset_ = ATLA_ELEOFFSET(stype,ename);\
+    elements_##stype[ele].arrayCount_ = ATLA_CALC_COUNT(stype, ename);\
+    elements_##stype[ele].nestedID_ = atBuildAtlaStringUUID(#nname,strlen(#nname));\
+    atAssert(ele < (sizeof(elements_##stype)/sizeof(elements_##stype[0]))); ++ele;
+
+#define ATLA_DEFINE_SCHEMA_FUNC_BEGIN(stype, elementsCount)\
+    atSchemaElement_t elements_##stype [elementsCount] = {0};\
+    atDataSchema_t schema_##stype = {NULL, NULL,\
+        {0},\
+        #stype,sizeof(stype),0,\
+        elementsCount,\
+        elements_##stype\
+    };\
+    atDataSchema_t* atla_helper_get_type_schema_##stype() {\
+        static atuint first_time = 0;\
+        int i = 0;\
+        if (first_time == 1) return &schema_##stype;\
+        ATLA_INIT_SCHEMA(stype);
+
+#define ATLA_DEFINE_SCHEMA_FUNC_END(stype) \
+    first_time = 1;\
+    return &schema_##stype; }
+    
 
 #ifdef __cplusplus
 } //extern "C"
 #endif//
+
+#ifdef __cplusplus
+
+#   define ATLA_BEGIN_SCHEMA(sname, elementCount) \
+    atSchemaElement_t elements_##sname [elementCount] = {
+
+#   define ATLA_SCHEMA_ELEMENT(stype, ename) \
+    {atBuildAtlaStringUUID(##sname, sizeof(##sname)), #ename, ATLA_ELESIZE(stype,ename), ATLA_ELEOFFSET(stype,ename), 1, {0}},
+
+#   define ATLA_SCHEMA_ELEMENTA(stype, ename) \
+    {atBuildAtlaStringUUID(##sname, sizeof(##sname)), #ename, ATLA_ELESIZE(stype,ename), ATLA_ELEOFFSET(stype,ename), ATLA_CALC_COUNT(stype, ename), {0}},
+
+#   define ATLA_SCHEMA_ELEMENT_NESTED(stype, ename) \
+    {atBuildAtlaStringUUID(##sname, sizeof(##sname)), #ename, ATLA_ELESIZE(stype,ename), ATLA_ELEOFFSET(stype,ename), ATLA_CALC_COUNT(stype, ename), {0}},
+
+#   define ATLA_CPP_END_SCHEMA(sname) };\
+    atDataSchema_t schema_##sname = {NULL, NULL,\
+        atBuildAtlaStringUUID(##sname, sizeof(##sname)),\
+        #sname,sizeof(sname),0,\
+        (sizeof(elements_##sname)/sizeof(elements_##sname[0])),\
+        elements_##sname\
+    }
+
+#define ATLA_GET_TYPE_SCHEMA_PTR(stype) &schema_##sname;
+
+#else 
+
+#   define ATLA_BEGIN_SCHEMA(sname, elementCount)               ATLA_DEFINE_SCHEMA_FUNC_BEGIN(sname, elementCount)
+#   define ATLA_SCHEMA_ELEMENT(stype, ename)                    ATLA_INIT_SCHEMA_ELEMENT(i, stype, ename)
+#   define ATLA_SCHEMA_ELEMENTA(stype, ename)                   ATLA_INIT_SCHEMA_ELEMENTA(i, stype, ename)
+#   define ATLA_SCHEMA_ELEMENT_NESTED(stype, ename, nname)      ATLA_INIT_SCHEMA_ELEMENT_NESTED(i, stype, ename, nname)
+#   define ATLA_SCHEMA_ELEMENT_NESTEDA(stype, ename, nname)     ATLA_INIT_SCHEMA_ELEMENT_NESTEDA(i, stype, ename, nname)
+#   define ATLA_END_SCHEMA(sname)                               ATLA_DEFINE_SCHEMA_FUNC_END(sname)
+#   define ATLA_GET_TYPE_SCHEMA_PTR(stype)                      atla_helper_get_type_schema_##stype()
+
+#endif
 
 
 #endif // ATLA_DATADEFTYPES_H__

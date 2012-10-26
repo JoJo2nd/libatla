@@ -29,29 +29,33 @@
 #ifndef ATLA_DATABLOB_H__
 #define ATLA_DATABLOB_H__
 
+#ifdef __cplusplus
+extern "C" {
+#endif//
+
 #include "atla/atla_config.h"
 #include "atla/atla_utils.h"
 #include "atla/atla_schema.h"
 #include "atla/atla_serialisationtypes.h"
 #include "atla/atla_memhandler.h"
-#include "atla/atla_iostream.h"
+#include "atla/atla_ioaccess.h"
 
 typedef struct atAtlaContext atAtlaContext_t;
 
 typedef struct atUsedSchema
 {
-    ATLA_LINKED_LIST_HEADER();
+    ATLA_LINKED_LIST_HEADER(atUsedSchema);
     atDataSchema_t*    schema_;
 } atUsedSchema_t;
 
 typedef struct atDataBlob
 {
-    ATLA_LINKED_LIST_HEADER();
+    ATLA_LINKED_LIST_HEADER(atDataBlob);
+    atUUID_t            objectID_;
     atDataSchema_t*     schema_;
     void*               pointer_;
-    atuint32            typeSizeBytes_;
     atuint32            elementCount_;
-    atUUID_t            objectID_;
+    atuint32            elementSize_; /* Only valid if schema is NULL */
 } atDataBlob_t;
 
 typedef struct atAtlaDataBlob
@@ -60,9 +64,13 @@ typedef struct atAtlaDataBlob
     atAtlaFileHeader_t  header_;
     atuint32            statusCode_;
     atMemoryHandler_t   memHandler_;
-    atIOStream_t        iostream_;
+    atIOAccess_t        iostream_;
     atUsedSchema_t*     usedSchemaHead_;
     atDataBlob_t*       dataBlobsHead_;
 } atAtlaDataBlob_t;
+
+#ifdef __cplusplus
+}//extern "C"
+#endif//
 
 #endif // ATLA_DATABLOB_H__

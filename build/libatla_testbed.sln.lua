@@ -18,5 +18,6 @@ solution (SlnName)
     location (SlnDir)
     configurations ({DebugCfgName, ReleaseCfgName})
     
-    dofile "project_scripts/libatla.proj.lua" --1st project becomes the start up project
+    dofile "project_scripts/atlaunittest.proj.lua" --1st project becomes the start up project
+    dofile "project_scripts/libatla.proj.lua"
 

@@ -207,7 +207,8 @@ void ATLA_API atResultMD5(atuint8* digest, at_md5_ctxt* ctxt)
 
 void ATLA_API atResultMD5ToUUID(atUUID_t* digest, at_md5_ctxt* ctxt)
 {
-    atResultMD5(digest->uuid_, ctxt);
+    /*the lsb 64bits are used here*/
+    *digest = ((atuint64)ctxt->md5_stb <<32) | ((atuint64)ctxt->md5_sta);
 }
 
 atuint32 X[16];
