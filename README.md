@@ -1,4 +1,4 @@
 libatla
 =======
 
-A small C++ library to serialise and de-serialise C++ classes and C PODs in a binary format.
+A small C library to serialise and de-serialise C PODs (and probably C++ classes) into a binary format.
