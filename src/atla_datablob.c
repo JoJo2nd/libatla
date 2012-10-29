@@ -54,8 +54,9 @@ atAtlaDataBlob_t* ATLA_API atOpenAtlaDataBlob(atAtlaContext_t* ctx, atIOAccess_t
 {
     atMemoryHandler_t* mem = ctx->memCtx_;
     atAtlaDataBlob_t* datablob = NULL;
-    void* tmpmem;
+    void* tmpmem, *tempend;
     atuint32 totalsize;
+    atDataSchema_t* schemap;
 
     if ((flags & ATLA_READ) && ioaccess->readProc_ == NULL) return NULL;
     if ((flags & ATLA_WRITE) && ioaccess->writeProc_ == NULL) return NULL;
@@ -79,7 +80,15 @@ atAtlaDataBlob_t* ATLA_API atOpenAtlaDataBlob(atAtlaContext_t* ctx, atIOAccess_t
         datablob->deserialeseInfo_.objects_ = ((atuint8*)tmpmem) + (datablob->header_.tocOffset_ - datablob->header_.headerSize_);
         datablob->deserialeseInfo_.objectCount_ = (totalsize-datablob->header_.tocOffset_)/datablob->header_.tocSize_;
         datablob->deserialeseInfo_.schema_ = ((atuint8*)tmpmem) + (datablob->header_.schemaOffset_ - datablob->header_.headerSize_);
-        //while ()
+        datablob->deserialiseInfo_.schemaCount_ = 0;
+        tempend = datablob->deserialiseInfo_.objects;
+        while (tmpmem <= tempend)
+        {
+            schemap = tmpmem;
+            ++datablob->deserialiseInfo_.schemaCount_;
+            tmpmem += datablob->header.schemaSize_;
+            tmpmem += schemap->elementCount_*datablob->header.schemaElementSize_;
+        }
     }
     else if (flags & ATLA_READ)
     {
