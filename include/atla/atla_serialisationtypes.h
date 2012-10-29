@@ -50,6 +50,13 @@ typedef struct atAtlaFileHeader
     atuint32    fourCC_; /* <- ATLA */
     atuint64    version_;
     atuint32    headerSize_;
+    atuint32    schemaSize_;
+    atuint32    schemaElementSize_;
+    atuint32    tocSize_;
+    atuint32    objectHdrSize_;
+    atuint64    schemaOffset_;
+    atuint64    tocOffset_;
+    atuint64    dataStartOffset_;
 } atAtlaFileHeader_t;
 
 typedef struct atSerialisedSchema

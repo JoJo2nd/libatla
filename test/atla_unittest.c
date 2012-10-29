@@ -172,7 +172,7 @@ int main(int argc, char *argv[])
     ec = atAddDataSchema(atla, ATLA_GET_TYPE_SCHEMA_PTR(DoubleNestedPOD_t));
     assert(ec == ATLA_EOK);
 
-    atladb = atCreateAtlaDataBlob(atla, &ioaccess, ATLA_WRITE);
+    atladb = atOpenAtlaDataBlob(atla, &ioaccess, ATLA_WRITE);
 
     ec = atAddDataToBlob(atladb, "write_test_1", "SimplePOD_t", 1, &a);
     assert(ec == ATLA_EOK);
@@ -186,7 +186,7 @@ int main(int argc, char *argv[])
     ec = atSerialiseDataBlob(atladb);
     assert(ec == ATLA_EOK);
 
-    atDestroyAtlaDataBlob(atladb);
+    atCloseAtlaDataBlob(atladb);
 
     fclose(ioaccess.user_);
 

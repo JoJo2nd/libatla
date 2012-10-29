@@ -63,10 +63,20 @@ typedef struct atAtlaDataBlob
     atAtlaContext_t*    ctx_;
     atAtlaFileHeader_t  header_;
     atuint32            statusCode_;
+    atuint32            props_;
     atMemoryHandler_t   memHandler_;
     atIOAccess_t        iostream_;
     atUsedSchema_t*     usedSchemaHead_;
     atDataBlob_t*       dataBlobsHead_;
+    struct atDeserialiseInfo
+    {
+        atuint32                        headerMemSize_;
+        void*                           headerMem_;
+        atuint32                        schemaCount_;
+        atSerialisedSchema_t*           schema_;
+        atuint32                        objectCount_;
+        atSerialisedObjectHeader_t*     objects_;
+    } deserialeseInfo_;
 } atAtlaDataBlob_t;
 
 #ifdef __cplusplus

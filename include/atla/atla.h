@@ -56,14 +56,13 @@ atAtlaContext_t* ATLA_API atCreateAtlaContext(atMemoryHandler_t*);
 atErrorCode ATLA_API atAddDataSchema(atAtlaContext_t*, atDataSchema_t*);
 atErrorCode ATLA_API atDestroyAtlaContext(atAtlaContext_t*);
 
-atAtlaDataBlob_t* ATLA_API atCreateAtlaDataBlob(atAtlaContext_t*, atIOAccess_t*, atuint32);
-void ATLA_API atDestroyAtlaDataBlob(atAtlaDataBlob_t*);
+atAtlaDataBlob_t* ATLA_API atOpenAtlaDataBlob(atAtlaContext_t*, atIOAccess_t*, atuint32);
+void ATLA_API atCloseAtlaDataBlob(atAtlaDataBlob_t*);
 atErrorCode ATLA_API atSerialiseDataBlob(atAtlaDataBlob_t*);
 atErrorCode ATLA_API atAddDataToBlob(atAtlaDataBlob_t*, const atchar* /*objectname*/, const atchar* /*schemaname*/, atuint32 /*count*/, void* /*data*/);
 atErrorCode ATLA_API atAddTypelessDataToBlob(atAtlaDataBlob_t*, const atchar* /*objectname*/, atuint32 /*size*/, atuint32 /*count*/, void* /*data*/);
 
 //TODO:
-atErrorCode ATLA_API atDeserialiseDataBlob(atAtlaDataBlob_t*, atIOAccess_t*);
 atErrorCode ATLA_API atGetDataBlobCount(atAtlaDataBlob_t*);
 void* ATLA_API atGetDataBlobByIndex(atAtlaDataBlob_t*, atuint);
 void* ATLA_API atGetTypeBlobDataByUUID(atAtlaDataBlob_t*, const atchar* /*objectname*/);
