@@ -54,9 +54,9 @@ atAtlaDataBlob_t* ATLA_API atOpenAtlaDataBlob(atAtlaContext_t* ctx, atIOAccess_t
 {
     atMemoryHandler_t* mem = ctx->memCtx_;
     atAtlaDataBlob_t* datablob = NULL;
-    void* tmpmem, *tempend;
+    atuint8* tmpmem, *tempend;
     atuint32 totalsize;
-    atDataSchema_t* schemap;
+    atSerialisedSchema_t* schemap;
 
     if ((flags & ATLA_READ) && ioaccess->readProc_ == NULL) return NULL;
     if ((flags & ATLA_WRITE) && ioaccess->writeProc_ == NULL) return NULL;
@@ -70,29 +70,29 @@ atAtlaDataBlob_t* ATLA_API atOpenAtlaDataBlob(atAtlaContext_t* ctx, atIOAccess_t
     if (flags & ATLA_WRITE)
     {
         datablob->props_ = ATLA_WRITE;
-
-        ATLA_IOREAD(ioaccess, &datablob->header_, sizeof(datablob->header_));
-        totalsize = datablob->header_.dataStartOffset_-datablob->header_.headerSize_;
-        tmpmem = mem->memAlloc_(totalsize, mem->memUser_);
-        datablob->deserialeseInfo_.headerMemSize_ = totalsize;
-        datablob->deserialeseInfo_.headerMem_ = tmpmem;
-        ATLA_IOREAD(ioaccess, tmpmem, totalsize);
-        datablob->deserialeseInfo_.objects_ = ((atuint8*)tmpmem) + (datablob->header_.tocOffset_ - datablob->header_.headerSize_);
-        datablob->deserialeseInfo_.objectCount_ = (totalsize-datablob->header_.tocOffset_)/datablob->header_.tocSize_;
-        datablob->deserialeseInfo_.schema_ = ((atuint8*)tmpmem) + (datablob->header_.schemaOffset_ - datablob->header_.headerSize_);
-        datablob->deserialiseInfo_.schemaCount_ = 0;
-        tempend = datablob->deserialiseInfo_.objects;
-        while (tmpmem <= tempend)
-        {
-            schemap = tmpmem;
-            ++datablob->deserialiseInfo_.schemaCount_;
-            tmpmem += datablob->header.schemaSize_;
-            tmpmem += schemap->elementCount_*datablob->header.schemaElementSize_;
-        }
     }
     else if (flags & ATLA_READ)
     {
         datablob->props_ = ATLA_READ;
+
+        ATLA_IOREAD(ioaccess, &datablob->header_, sizeof(datablob->header_));
+        totalsize = datablob->header_.dataStartOffset_-datablob->header_.headerSize_;
+        tmpmem = mem->memAlloc_(totalsize, mem->memUser_);
+        datablob->deserialiseInfo_.headerMemSize_ = totalsize;
+        datablob->deserialiseInfo_.headerMem_ = tmpmem;
+        ATLA_IOREAD(ioaccess, tmpmem, totalsize);
+        datablob->deserialiseInfo_.objects_ = (atSerialisedTOC_t*)((atuint8*)tmpmem) + (datablob->header_.tocOffset_ - datablob->header_.headerSize_);
+        datablob->deserialiseInfo_.objectCount_ = (totalsize-datablob->header_.tocOffset_)/datablob->header_.tocSize_;
+        datablob->deserialiseInfo_.schema_ = (atSerialisedSchema_t*)((atuint8*)tmpmem) + (datablob->header_.schemaOffset_ - datablob->header_.headerSize_);
+        datablob->deserialiseInfo_.schemaCount_ = 0;
+        tempend = (atuint8*)datablob->deserialiseInfo_.objects_;
+        while (tmpmem <= tempend)
+        {
+            schemap = (atSerialisedSchema_t*)tmpmem;
+            ++datablob->deserialiseInfo_.schemaCount_;
+            tmpmem += datablob->header_.schemaSize_;
+            tmpmem += schemap->elementCount_*datablob->header_.schemaElementSize_;
+        }
     }
 
     return datablob;
@@ -156,7 +156,7 @@ atuint ATLA_API atSerialiseDataBlob(atAtlaDataBlob_t* blob)
     ATLA_IOSEEK(ios, 0, eSeekOffset_Begin);
     ATLA_IOWRITE(ios, &blob->header_, sizeof(blob->header_));
 
-    blob->header_.schemaOffset_ = ATLA_IOTELL(ios);
+    blob->header_.schemaOffset_ = (atuint32)ATLA_IOTELL(ios);
 
     //Walk the Type Desc structs and write them
     for (utdp = blob->usedSchemaHead_; utdp; utdp = utdp->next_)
@@ -166,7 +166,7 @@ atuint ATLA_API atSerialiseDataBlob(atAtlaDataBlob_t* blob)
     }
 
     tellof = ATLA_IOTELL(ios);
-    blob->header_.tocOffset_ = tellof;
+    blob->header_.tocOffset_ = (atuint32)tellof;
 
     //Walk the Data pointers and serialise the data IDs make space for offsets
     for (tdbp = blob->dataBlobsHead_, currentObjectID = 0; tdbp; tdbp = tdbp->next_, ++currentObjectID)
@@ -175,7 +175,7 @@ atuint ATLA_API atSerialiseDataBlob(atAtlaDataBlob_t* blob)
         toc.fileoffset_ = tellof;
         if (tdbp->schema_)
         {
-            tellof += tdbp->schema_->serialisedSize_;
+            tellof += tdbp->schema_->serialisedSize_*tdbp->elementCount_;
         }
         else
         {
@@ -184,7 +184,7 @@ atuint ATLA_API atSerialiseDataBlob(atAtlaDataBlob_t* blob)
         ATLA_IOWRITE(ios, &toc, sizeof(atSerialisedTOC_t));
     }
 
-    blob->header_.dataStartOffset_ = ATLA_IOTELL(ios);
+    blob->header_.dataStartOffset_ = (atuint32)ATLA_IOTELL(ios);
 
     //Walk the Data pointers and serialise the data
     for (tdbp = blob->dataBlobsHead_, currentObjectID = 0; tdbp; tdbp = tdbp->next_, ++currentObjectID)

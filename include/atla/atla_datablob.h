@@ -75,8 +75,8 @@ typedef struct atAtlaDataBlob
         atuint32                        schemaCount_;
         atSerialisedSchema_t*           schema_;
         atuint32                        objectCount_;
-        atSerialisedObjectHeader_t*     objects_;
-    } deserialeseInfo_;
+        atSerialisedTOC_t*              objects_;
+    } deserialiseInfo_;
 } atAtlaDataBlob_t;
 
 #ifdef __cplusplus

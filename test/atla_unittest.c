@@ -190,6 +190,13 @@ int main(int argc, char *argv[])
 
     fclose(ioaccess.user_);
 
+    ioaccess.user_ = fopen("atla_test.dat", "rb");
+
+    atladb = atOpenAtlaDataBlob(atla, &ioaccess, ATLA_READ);
+
+
+    atCloseAtlaDataBlob(atladb);
+
     ec = atDestroyAtlaContext(atla);
     assert(ec == ATLA_EOK);
 
