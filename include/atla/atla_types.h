@@ -90,7 +90,9 @@ typedef enum atErrorCode
     ATLA_EPOINTERNOTFOUND       = -5,
     ATLA_EBADSCHEMAID           = -6,
     ATLA_ENESTEDSCHEMANOTFOUND  = -7,
-    ATLA_ETYPEMISMATCH          = -8
+    ATLA_ETYPEMISMATCH          = -8,
+    ATLA_ENOTFOUND              = -9,
+    ATLA_EOUTOFRANGE            = -10
 } atErrorCode;
 
 #ifdef __cplusplus

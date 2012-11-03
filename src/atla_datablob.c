@@ -32,10 +32,10 @@
 #include <memory.h>
 #include <string.h>
 
-#define ATLA_IOREAD(io, buf, size)      io->readProc_(buf, size, io->user_)
-#define ATLA_IOSEEK(io, offset, from)   io->seekProc_(offset, from, io->user_)
-#define ATLA_IOWRITE(io, buf, size)     io->writeProc_(buf, size, io->user_)
-#define ATLA_IOTELL(io)                 io->tellProc_(io->user_)
+#define ATLA_IOREAD(io, buf, size)      (io)->readProc_(buf, size, (io)->user_)
+#define ATLA_IOSEEK(io, offset, from)   (io)->seekProc_(offset, from, (io)->user_)
+#define ATLA_IOWRITE(io, buf, size)     (io)->writeProc_(buf, size, (io)->user_)
+#define ATLA_IOTELL(io)                 (io)->tellProc_((io)->user_)
 
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
@@ -526,6 +526,75 @@ atErrorCode ATLA_API atResolveAndDeserialseData(atAtlaDataBlob_t* blob, atUUID_t
     }
 
     return ATLA_EOK;
+}
+
+atuint ATLA_API atGetDataCount(atAtlaDataBlob_t* blob)
+{
+    return blob->deserialiseInfo_.objectCount_;
+}
+
+atErrorCode ATLA_API atGetDataDescByIndex(atAtlaDataBlob_t* blob, atuint idx, atDataDesc_t* outdesc)
+{
+    if (idx >= blob->deserialiseInfo_.objectCount_) return ATLA_EOUTOFRANGE;
+
+    outdesc->count_ = blob->deserialiseInfo_.objects_[idx].count_;
+    outdesc->dataID_ = blob->deserialiseInfo_.objects_[idx].objectID_;
+    outdesc->typeID_ = blob->deserialiseInfo_.objects_[idx].typeID_;
+
+    return ATLA_EOK;
+}
+
+atErrorCode ATLA_API atGetDataDescByName(atAtlaDataBlob_t* blob, const atchar* objectname, atDataDesc_t* outdesc)
+{
+    atuint i, iend;
+    atUUID_t id;
+
+    id = atBuildAtlaStringUUID(objectname, strlen(objectname));
+
+    for (i = 0, iend = blob->deserialiseInfo_.objectCount_; i < iend; ++i)
+    {
+        if (blob->deserialiseInfo_.objects_[i].objectID_ == id)
+        {
+            return atGetDataDescByIndex(blob, i, outdesc);
+        }
+    }
+
+    return ATLA_ENOTFOUND;
+}
+
+atErrorCode ATLA_API atDeserialiseDataByIndex(atAtlaDataBlob_t* blob, atuint idx, void* output)
+{
+    atUUID_t typeID;
+    atuint count; 
+
+    if (idx >= blob->deserialiseInfo_.objectCount_) return ATLA_EOUTOFRANGE;
+
+    count = blob->deserialiseInfo_.objects_[idx].count_;
+    typeID = blob->deserialiseInfo_.objects_[idx].typeID_;
+
+    ATLA_IOSEEK(&blob->iostream_, blob->deserialiseInfo_.objects_[idx].fileoffset_, eSeekOffset_Begin);
+    blob->statusCode_ = atResolveAndDeserialseData(blob, typeID, count, output);
+    if (blob->statusCode_ != ATLA_EOK) return blob->statusCode_;
+
+    return ATLA_EOK;
+}
+
+atErrorCode ATLA_API atDeserialiseDataByName(atAtlaDataBlob_t* blob, const atchar* objectname, void* output)
+{
+    atuint i, iend;
+    atUUID_t id;
+
+    id = atBuildAtlaStringUUID(objectname, strlen(objectname));
+
+    for (i = 0, iend = blob->deserialiseInfo_.objectCount_; i < iend; ++i)
+    {
+        if (blob->deserialiseInfo_.objects_[i].objectID_ == id)
+        {
+            return atDeserialiseDataByIndex(blob, i, output);
+        }
+    }
+
+    return ATLA_ENOTFOUND;
 }
 
 #undef ATLA_IOREAD
