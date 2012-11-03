@@ -46,6 +46,8 @@
 extern "C" {
 #endif//
 
+ATLA_ENSURE_PRIVATE_HEADER();
+
 #define cyMD5_BUFLEN	64
 
     typedef struct 

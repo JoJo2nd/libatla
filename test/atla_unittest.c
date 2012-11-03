@@ -54,7 +54,7 @@ atuint32 ATLA_CALLBACK atIOWrite(const void* pBuffer, atuint32 size, void* user)
     return fwrite(pBuffer, 1, size, user);
 }
 
-atuint32 ATLA_CALLBACK atIOSeek(atuint32 offset, atSeekOffset from, void* user)
+atuint64 ATLA_CALLBACK atIOSeek(atuint64 offset, atSeekOffset from, void* user)
 {
     return fseek(user, offset, from);
 }

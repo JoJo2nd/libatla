@@ -38,7 +38,7 @@ extern "C" {
 
 #ifdef ATAL_USE_ASSERT
 
-#   define atAssertFail(msg)
+#   define atAssertFail(msg) assert(0 && cond)
 #   define atAssert(cond) assert(cond)
 
 #else
@@ -48,7 +48,7 @@ extern "C" {
 
 #endif
 
-#define atCompileTimeAssert(cond, msg)
+#define atCompileTimeAssert(cond) typedef char __C_ASSERT__[(cond)?1:-1]
 
 #ifdef __cplusplus
 } //extern "C"

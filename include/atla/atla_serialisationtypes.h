@@ -35,6 +35,8 @@
 extern "C" {
 #endif//
 
+ATLA_ENSURE_PRIVATE_HEADER();
+
 #pragma pack(push, 1)
 
 #define ATLA_FOURCC (atuint32)(('A'<<24)|('T'<<16)|('L'<<8)|('A'))
@@ -80,6 +82,9 @@ typedef struct atSerialisedTOC
 {
     atUUID_t objectID_;
     atuint64 fileoffset_;
+    atUUID_t typeID_;
+    atuint32 count_;  
+    atuint32 size_; /* Only valid if typeID is zero */
 } atSerialisedTOC_t;
 
 typedef struct atSerialisedObjectHeader

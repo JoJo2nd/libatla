@@ -52,6 +52,12 @@ extern "C" {
 #   define ATLA_USE_ASSERT (1)
 #endif 
 
+#ifdef COMPILE_LIB_ATLA
+#   define ATLA_ENSURE_PRIVATE_HEADER() 
+#else
+#   define ATLA_ENSURE_PRIVATE_HEADER()   atCompileTimeAssert(0 && "This header shouldn't be included outside of libatla")
+#endif
+
 #ifdef __cplusplus
 } //extern "C"
 #endif//

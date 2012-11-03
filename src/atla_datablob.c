@@ -41,15 +41,6 @@
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
 
-void ATLA_API atInitDataBlob(atAtlaDataBlob_t*, atMemoryHandler_t*);
-atErrorCode ATLA_API atAddSchemaToBlob(atAtlaDataBlob_t*, atDataSchema_t*);
-atErrorCode ATLA_API atSerialiseSchema(atIOAccess_t*, atDataSchema_t*);
-atErrorCode ATLA_API atSerialiseNestedSchema(atAtlaDataBlob_t* ctx, atUUID_t schemaID, atuint32 count, atuint8* eledataptr, atIOAccess_t* iostream);
-
-//////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////
-
 atAtlaDataBlob_t* ATLA_API atOpenAtlaDataBlob(atAtlaContext_t* ctx, atIOAccess_t* ioaccess, atuint32 flags)
 {
     atMemoryHandler_t* mem = ctx->memCtx_;
@@ -81,17 +72,19 @@ atAtlaDataBlob_t* ATLA_API atOpenAtlaDataBlob(atAtlaContext_t* ctx, atIOAccess_t
         datablob->deserialiseInfo_.headerMemSize_ = totalsize;
         datablob->deserialiseInfo_.headerMem_ = tmpmem;
         ATLA_IOREAD(ioaccess, tmpmem, totalsize);
-        datablob->deserialiseInfo_.objects_ = (atSerialisedTOC_t*)((atuint8*)tmpmem) + (datablob->header_.tocOffset_ - datablob->header_.headerSize_);
-        datablob->deserialiseInfo_.objectCount_ = (totalsize-datablob->header_.tocOffset_)/datablob->header_.tocSize_;
-        datablob->deserialiseInfo_.schema_ = (atSerialisedSchema_t*)((atuint8*)tmpmem) + (datablob->header_.schemaOffset_ - datablob->header_.headerSize_);
+        datablob->deserialiseInfo_.objects_ = (atSerialisedTOC_t*)(((atuint8*)tmpmem) + (datablob->header_.tocOffset_ - datablob->header_.headerSize_));
+        datablob->deserialiseInfo_.objectCount_ = (datablob->header_.dataStartOffset_-datablob->header_.tocOffset_)/datablob->header_.tocSize_;
+        datablob->deserialiseInfo_.schema_ = (atSerialisedSchema_t*)(((atuint8*)tmpmem) + (datablob->header_.schemaOffset_ - datablob->header_.headerSize_));
         datablob->deserialiseInfo_.schemaCount_ = 0;
         tempend = (atuint8*)datablob->deserialiseInfo_.objects_;
-        while (tmpmem <= tempend)
+        while (tmpmem < tempend)
         {
             schemap = (atSerialisedSchema_t*)tmpmem;
             ++datablob->deserialiseInfo_.schemaCount_;
             tmpmem += datablob->header_.schemaSize_;
             tmpmem += schemap->elementCount_*datablob->header_.schemaElementSize_;
+            //TODO: validate that the elements are in offset order, make serialisation simpler
+            // If not in order, easy enough to sort them and make that the case.
         }
     }
 
@@ -121,16 +114,6 @@ void ATLA_API atCloseAtlaDataBlob(atAtlaDataBlob_t* datablob)
     }
 
     mem->memFree_(datablob, mem->memUser_);
-}
-
-//////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////
-
-atuint ATLA_API atDeserialiseDataBlob(atAtlaDataBlob_t* ctx, atIOAccess_t* iostream)
-{
-    // TODO:
-    return ATLA_NOTSUPPORTED;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -168,17 +151,28 @@ atuint ATLA_API atSerialiseDataBlob(atAtlaDataBlob_t* blob)
     tellof = ATLA_IOTELL(ios);
     blob->header_.tocOffset_ = (atuint32)tellof;
 
+    //account for TOC storage
+    for (tdbp = blob->dataBlobsHead_; tdbp; tdbp = tdbp->next_)
+    {
+        tellof += sizeof(atSerialisedTOC_t);
+    }
+
     //Walk the Data pointers and serialise the data IDs make space for offsets
     for (tdbp = blob->dataBlobsHead_, currentObjectID = 0; tdbp; tdbp = tdbp->next_, ++currentObjectID)
     {
         toc.objectID_ = tdbp->objectID_;
         toc.fileoffset_ = tellof;
+        toc.count_ = tdbp->elementCount_;
         if (tdbp->schema_)
         {
+            toc.typeID_ = tdbp->schema_->id_;
+            toc.size_ = tdbp->schema_->serialisedSize_;
             tellof += tdbp->schema_->serialisedSize_*tdbp->elementCount_;
         }
         else
         {
+            toc.typeID_ = 0;
+            toc.size_ = tdbp->elementSize_;
             tellof += tdbp->elementSize_*tdbp->elementCount_;
         }
         ATLA_IOWRITE(ios, &toc, sizeof(atSerialisedTOC_t));
@@ -193,14 +187,6 @@ atuint ATLA_API atSerialiseDataBlob(atAtlaDataBlob_t* blob)
         
         if (tdbp->schema_)
         {
-            //Write the object header.
-
-            objectHeader.objectID_ = tdbp->objectID_;
-            objectHeader.count_ = tdbp->elementCount_;
-            objectHeader.typeID_ = tdbp->schema_->id_;
-
-            ATLA_IOWRITE(ios, &objectHeader, sizeof(objectHeader));
-
             typeSchema = tdbp->schema_;
             for (elementIdx = 0; elementIdx < tdbp->elementCount_; ++elementIdx)
             {
@@ -267,6 +253,7 @@ atErrorCode ATLA_API atSerialiseSchema(atIOAccess_t* io, atDataSchema_t* typedes
         typeeledef.typeID_  = elements[i].nestedID_;
         typeeledef.flags_ |= elements[i].arrayCount_ > 1 ? ATLA_ARRAY_TYPE : 0;
 
+        elementOffset += elements[i].size_;
         ATLA_IOWRITE(io, &typeeledef, sizeof(atSerialisedSchemaElement_t));
     }
 
@@ -362,7 +349,7 @@ void ATLA_API atInitDataBlob(atAtlaDataBlob_t* datablob, atMemoryHandler_t* mem)
     datablob->header_.schemaSize_ = sizeof(atSerialisedSchema_t);
     datablob->header_.schemaElementSize_ = sizeof(atSerialisedSchemaElement_t);
     datablob->header_.tocSize_ = sizeof(atSerialisedTOC_t);
-    datablob->header_.objectHdrSize_ = sizeof(atSerialisedObjectHeader_t);
+    datablob->header_.objectHdrSize_ = 0;
     datablob->header_.schemaOffset_ = 0;
     datablob->header_.tocOffset_ = 0;
     datablob->header_.dataStartOffset_ = 0;
@@ -437,6 +424,108 @@ atErrorCode ATLA_API atSerialiseNestedSchema(atAtlaDataBlob_t* blob, atUUID_t sc
     }
     return ATLA_EOK;
 
+}
+
+atErrorCode ATLA_API atGetSerialisedSchema(atAtlaDataBlob_t* ctx, atUUID_t schemaID, atSerialisedSchema_t** outschema, atSerialisedSchemaElement_t** outeles)
+{
+    atSerialisedSchema_t* schema;
+    atuint i, imax;
+
+    atAssert(ctx && outschema && outeles);
+
+    imax = ctx->deserialiseInfo_.schemaCount_;
+    schema = ctx->deserialiseInfo_.schema_; 
+
+    for (i = 0; i < imax; ++i)
+    {
+        if (schema->typeID_ == schemaID)
+        {
+            *outschema = schema;
+            *outeles = (atSerialisedSchemaElement_t*)(schema+1);
+        }
+        schema = (atSerialisedSchema_t*)(((atuint8*)schema)+sizeof(atSerialisedSchema_t)+(schema->elementCount_*sizeof(atSerialisedSchemaElement_t)));
+    }
+
+    return ATLA_EBADSCHEMAID;
+}
+
+void* atGetOutputOffset(atDataSchema_t* schema, atUUID_t id, void* ptr, atUUID_t* typeID)
+{
+    atuint i;
+
+    for (i = 0; i < id; ++i)
+    {
+        if (schema->elementArray_[i].id_ == id)
+        {
+            return (atuint8*)ptr + schema->elementArray_[i].offset_;
+        }
+    }
+
+    return NULL;
+}
+
+atErrorCode ATLA_API atResolveAndDeserialseData(atAtlaDataBlob_t* blob, atUUID_t typeID, atuint count, void* outptr)
+{
+    /*
+     * The assumption is made here that io stream is in the correct place.
+     */
+    atSerialisedSchema_t* dataSchema;
+    atSerialisedSchemaElement_t* dataSchemaElements;
+    atDataSchema_t* schema;
+    atIOAccess_t* ios = &blob->iostream_;
+    atuint dataEleCount, eleCount;
+    atuint object, dataEle;
+    atuint datasize;
+    atuint8* rootptr;
+    void* eleptr; 
+    atUUID_t schemaTypeID;
+
+    schema = atContextGetDataSchema(blob->ctx_, typeID);
+    return ATLA_EBADSCHEMAID;
+
+    blob->statusCode_ = atGetSerialisedSchema(blob, typeID, &dataSchema, &dataSchemaElements);
+    if (blob->statusCode_ != ATLA_EOK) return blob->statusCode_;
+
+    dataEleCount = dataSchema->elementCount_;
+    eleCount = schema->elementCount_;
+
+    rootptr = (atuint8*)outptr;
+    for (object = 0; object < count; ++object)
+    {
+        for (dataEle = 0; dataEle < dataEleCount; ++dataEle)
+        {
+            datasize = dataSchemaElements[dataEle].size_*dataSchemaElements[dataEle].arraycount_;
+            // find correct offset into outptr
+            eleptr = atGetOutputOffset(schema, dataSchemaElements[dataEle].elementID_, rootptr, &schemaTypeID);
+
+            // if found offset to write to...
+            if (eleptr)
+            {
+                // ...read in the data if the element desc still exists in the 
+                // type schema
+                if (dataSchemaElements[dataEle].typeID_ == 0)
+                {
+                    ATLA_IOREAD(ios, eleptr, datasize);
+                }
+                else if (dataSchemaElements[dataEle].typeID_ == schemaTypeID)
+                {
+                    blob->statusCode_ = atResolveAndDeserialseData(blob, schemaTypeID, dataSchemaElements[dataEle].arraycount_, eleptr);
+                    if (blob->statusCode_ != ATLA_EOK) return ATLA_EOK;
+                }
+                else
+                {
+                    /* Can't resolve this case*/
+                    return ATLA_ETYPEMISMATCH;
+                }
+            }
+            // Seek past element
+            ATLA_IOSEEK(ios, datasize, eSeekOffset_Current);
+        }
+
+        rootptr += schema->typeSize_;
+    }
+
+    return ATLA_EOK;
 }
 
 #undef ATLA_IOREAD

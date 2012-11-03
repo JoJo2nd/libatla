@@ -49,7 +49,7 @@ typedef enum atSeekOffset
 
 typedef atuint32 (ATLA_CALLBACK *atIOReadProc)(void* pBuffer, atuint32 size, void* user);
 typedef atuint32 (ATLA_CALLBACK *atIOWriteProc)(const void* pBuffer, atuint32 size, void* user);
-typedef atuint32 (ATLA_CALLBACK *atIOSeekProc)(atuint32 offset, atSeekOffset from, void* user);
+typedef atuint64 (ATLA_CALLBACK *atIOSeekProc)(atuint64 offset, atSeekOffset from, void* user);
 typedef atuint64 (ATLA_CALLBACK *atIOTellProc)(void* user);
 
 //////////////////////////////////////////////////////////////////////////

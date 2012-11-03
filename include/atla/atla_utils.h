@@ -29,7 +29,17 @@
 #ifndef ATLA_UTILS_H__
 #define ATLA_UTILS_H__
 
+#include "atla/atla_debug.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif//
 
 #define ATLA_LINKED_LIST_HEADER(ty) struct ty* next_; struct ty* prev_
+
+#ifdef __cplusplus
+} //extern "C"
+#endif//
+
 
 #endif // ATLA_UTILS_H__

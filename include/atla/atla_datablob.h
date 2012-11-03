@@ -33,6 +33,8 @@
 extern "C" {
 #endif//
 
+ATLA_ENSURE_PRIVATE_HEADER();
+
 #include "atla/atla_config.h"
 #include "atla/atla_utils.h"
 #include "atla/atla_schema.h"
@@ -78,6 +80,17 @@ typedef struct atAtlaDataBlob
         atSerialisedTOC_t*              objects_;
     } deserialiseInfo_;
 } atAtlaDataBlob_t;
+
+//////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+
+void ATLA_API atInitDataBlob(atAtlaDataBlob_t*, atMemoryHandler_t*);
+atErrorCode ATLA_API atAddSchemaToBlob(atAtlaDataBlob_t*, atDataSchema_t*);
+atErrorCode ATLA_API atSerialiseSchema(atIOAccess_t*, atDataSchema_t*);
+atErrorCode ATLA_API atSerialiseNestedSchema(atAtlaDataBlob_t* ctx, atUUID_t schemaID, atuint32 count, atuint8* eledataptr, atIOAccess_t* iostream);
+atErrorCode ATLA_API atGetSerialisedSchema(atAtlaDataBlob_t* ctx, atUUID_t schemaID, atSerialisedSchema_t** outschema, atSerialisedSchemaElement_t** outeles);
+atErrorCode ATLA_API atResolveAndDeserialseData(atAtlaDataBlob_t* blob, atUUID_t typeID, atuint count, void* outptr);
 
 #ifdef __cplusplus
 }//extern "C"

@@ -43,6 +43,13 @@ extern "C" {
 typedef void* (ATLA_CALLBACK *atDataTypeAllocProc)(atUUID_t /*typeID*/, void* /*user*/);
 typedef void* (ATLA_CALLBACK *atDataTypeDefaultProc)(atUUID_t /*typeID*/, void* /*dst*/, void* /*user*/);
 
+typedef struct atDataDesc
+{
+    atUUID_t        typeID_;
+    atUUID_t        dataID_;
+    atuint          count_;
+} atDataDesc_t;
+
 typedef struct atSchemaElement
 {
     atUUID_t                id_;

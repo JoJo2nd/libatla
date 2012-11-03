@@ -50,13 +50,6 @@ typedef atuint8             atbyte;
 typedef char                atchar;
 typedef atuint8             atbool;
 typedef atuint64            atUUID_t;
-/*typedef struct atUUID
-{
-    union {
-        atuint64    i64[2];
-        atchar      i8[16];
-    } uuid_;
-} atUUID_t;*/
 
 typedef enum atTypeID
 {
@@ -97,6 +90,7 @@ typedef enum atErrorCode
     ATLA_EPOINTERNOTFOUND       = -5,
     ATLA_EBADSCHEMAID           = -6,
     ATLA_ENESTEDSCHEMANOTFOUND  = -7,
+    ATLA_ETYPEMISMATCH          = -8
 } atErrorCode;
 
 #ifdef __cplusplus

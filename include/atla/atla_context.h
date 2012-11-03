@@ -35,6 +35,8 @@
 extern "C" {
 #endif//
 
+ATLA_ENSURE_PRIVATE_HEADER();
+
 typedef struct atDataSchema atDataSchema_t;
 typedef struct atMemoryHandler atMemoryHandler_t;
 typedef struct atDataSchema atDataSchema_t;

@@ -48,6 +48,7 @@ typedef struct atAtlaContext atAtlaContext_t;
 typedef struct atAtlaDataBlob atAtlaDataBlob_t;
 typedef struct atDataSchema atDataSchema_t;
 typedef struct atMemoryHandler atMemoryHandler_t;
+typedef struct atDataDesc atDataDesc_t;
 
 atuint64 ATLA_API atGetAtlaVersion();
 atUUID_t ATLA_API atBuildAtlaStringUUID(const atchar* /*str*/, atuint32 /*strlen*/);
@@ -63,9 +64,11 @@ atErrorCode ATLA_API atAddDataToBlob(atAtlaDataBlob_t*, const atchar* /*objectna
 atErrorCode ATLA_API atAddTypelessDataToBlob(atAtlaDataBlob_t*, const atchar* /*objectname*/, atuint32 /*size*/, atuint32 /*count*/, void* /*data*/);
 
 //TODO:
-atErrorCode ATLA_API atGetDataBlobCount(atAtlaDataBlob_t*);
-void* ATLA_API atGetDataBlobByIndex(atAtlaDataBlob_t*, atuint);
-void* ATLA_API atGetTypeBlobDataByUUID(atAtlaDataBlob_t*, const atchar* /*objectname*/);
+atuint ATLA_API atGetDataCount(atAtlaDataBlob_t*);
+atErrorCode ATLA_API atGetDataDescByIndex(atAtlaDataBlob_t*, atuint, atDataDesc_t*);
+atErrorCode ATLA_API atGetDataDescByName(atAtlaDataBlob_t*, const atchar* /*objectname*/, atDataDesc_t*);
+atErrorCode ATLA_API atDeserialiseDataByIndex(atAtlaDataBlob_t*, atuint, void* /*output*/);
+atErrorCode ATLA_API atDeserialiseDataByName(atAtlaDataBlob_t*, const atchar* /*objectname*/, void* /*output*/);
 
 #ifdef __cplusplus
 } //extern "C"
