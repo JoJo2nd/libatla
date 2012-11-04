@@ -110,8 +110,9 @@ void ATLA_API atCloseAtlaDataBlob(atAtlaDataBlob_t* datablob)
     for (utdp = datablob->usedSchemaHead_; utdp; utdp = tmputdp)
     {
         tmputdp = utdp->next_;
-        mem->memFree_(tdbp, mem->memUser_);
+        mem->memFree_(utdp, mem->memUser_);
     }
+    mem->memFree_(datablob->deserialiseInfo_.headerMem_, mem->memUser_);
 
     mem->memFree_(datablob, mem->memUser_);
 }
@@ -360,6 +361,8 @@ void ATLA_API atInitDataBlob(atAtlaDataBlob_t* datablob, atMemoryHandler_t* mem)
     datablob->props_ = 0;
     datablob->dataBlobsHead_ = NULL;
     datablob->usedSchemaHead_ = NULL;
+
+    memset(&datablob->deserialiseInfo_, 0, sizeof(datablob->deserialiseInfo_));
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -442,6 +445,7 @@ atErrorCode ATLA_API atGetSerialisedSchema(atAtlaDataBlob_t* ctx, atUUID_t schem
         {
             *outschema = schema;
             *outeles = (atSerialisedSchemaElement_t*)(schema+1);
+            return ATLA_EOK;
         }
         schema = (atSerialisedSchema_t*)(((atuint8*)schema)+sizeof(atSerialisedSchema_t)+(schema->elementCount_*sizeof(atSerialisedSchemaElement_t)));
     }
@@ -457,6 +461,7 @@ void* atGetOutputOffset(atDataSchema_t* schema, atUUID_t id, void* ptr, atUUID_t
     {
         if (schema->elementArray_[i].id_ == id)
         {
+            *typeID = schema->elementArray_[i].nestedID_;
             return (atuint8*)ptr + schema->elementArray_[i].offset_;
         }
     }
@@ -481,7 +486,7 @@ atErrorCode ATLA_API atResolveAndDeserialseData(atAtlaDataBlob_t* blob, atUUID_t
     atUUID_t schemaTypeID;
 
     schema = atContextGetDataSchema(blob->ctx_, typeID);
-    return ATLA_EBADSCHEMAID;
+    if (!schema) return ATLA_EBADSCHEMAID;
 
     blob->statusCode_ = atGetSerialisedSchema(blob, typeID, &dataSchema, &dataSchemaElements);
     if (blob->statusCode_ != ATLA_EOK) return blob->statusCode_;
@@ -518,8 +523,11 @@ atErrorCode ATLA_API atResolveAndDeserialseData(atAtlaDataBlob_t* blob, atUUID_t
                     return ATLA_ETYPEMISMATCH;
                 }
             }
-            // Seek past element
-            ATLA_IOSEEK(ios, datasize, eSeekOffset_Current);
+            else
+            {
+                // Seek past element
+                ATLA_IOSEEK(ios, datasize, eSeekOffset_Current);
+            }
         }
 
         rootptr += schema->typeSize_;
@@ -573,8 +581,16 @@ atErrorCode ATLA_API atDeserialiseDataByIndex(atAtlaDataBlob_t* blob, atuint idx
     typeID = blob->deserialiseInfo_.objects_[idx].typeID_;
 
     ATLA_IOSEEK(&blob->iostream_, blob->deserialiseInfo_.objects_[idx].fileoffset_, eSeekOffset_Begin);
-    blob->statusCode_ = atResolveAndDeserialseData(blob, typeID, count, output);
-    if (blob->statusCode_ != ATLA_EOK) return blob->statusCode_;
+    if (typeID != 0)
+    {
+        blob->statusCode_ = atResolveAndDeserialseData(blob, typeID, count, output);
+        if (blob->statusCode_ != ATLA_EOK) return blob->statusCode_;
+    }
+    else
+    {
+        //Typeless data, assumes no padding
+        ATLA_IOREAD(&blob->iostream_, output, count*blob->deserialiseInfo_.objects_[idx].size_);
+    }
 
     return ATLA_EOK;
 }
