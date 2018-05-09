@@ -26,32 +26,19 @@
 *********************************************************************/
 #pragma once
 
-#ifndef ATLA_CONTEXT_H__
-#define ATLA_CONTEXT_H__
+#include "atla_config.h"
+#include "hashtable.h"
 
-#include "atla/atla_config.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif//
-
-ATLA_ENSURE_PRIVATE_HEADER();
-
-typedef struct atDataSchema atDataSchema_t;
-typedef struct atMemoryHandler atMemoryHandler_t;
-typedef struct atDataSchema atDataSchema_t;
-
-typedef struct atAtlaContext
+struct atAtlaContext
 {
     atMemoryHandler_t*  memCtx_;
-    atuint              schemaCount_;
-    atDataSchema_t*     schemaHead_;
-} atAtlaContext_t;
+    //atuint              schemaCount_;
+    //atDataSchema_t*     schemaHead_;
+    ht_hash_table_t 		registeredTypes;
+};
 
-atDataSchema_t* ATLA_API atContextGetDataSchema(atAtlaContext_t*, atUUID_t id);
+typedef struct atAtlaContext atAtlaContext_t;
 
-#ifdef __cplusplus
-}//    extern "C"
-#endif//
+//atDataSchema_t* ATLA_API atContextGetDataSchema(atAtlaContext_t*, atUUID_t id);
 
-#endif // ATLA_CONTEXT_H__
