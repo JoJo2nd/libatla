@@ -26,27 +26,27 @@
 *********************************************************************/
 #pragma once
 
-#ifndef ATLA_MEMHANDLER_H__
-#define ATLA_MEMHANDLER_H__
-
-#include "atla/atla_config.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif//
 
+#include "atla_config.h"
+
+
 typedef void* (ATLA_CALLBACK *atMallocProc)(atsize_t size, void* user);
+typedef void* (ATLA_CALLBACK *atReallocProc)(void* ptr, atsize_t size, void* user);
 typedef void  (ATLA_CALLBACK *atFreeProc)(void* ptr, void* user);
 
-typedef struct atMemoryHandler
+struct atMemoryHandler
 {
     atMallocProc    memAlloc_;
+    atReallocProc		memRelloc;
     atFreeProc      memFree_;
     void*           memUser_;
-} atMemoryHandler_t;
+};
+
+typedef struct atMemoryHandler atMemoryHandler_t;
 
 #ifdef __cplusplus
 } //extern "C"
 #endif//
-
-#endif // ATLA_MEMHANDLER_H__

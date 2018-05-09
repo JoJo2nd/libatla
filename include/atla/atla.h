@@ -27,36 +27,51 @@
 
 #pragma once
 
-#ifndef ATLA_H__
-#define ATLA_H__
+#ifdef __cplusplus
+extern "C" {
+#endif//
 
 /*
  * Main Include for alta lib
  **/
 
-#include "atla/atla_config.h"
-#include "atla/atla_memhandler.h"
+#include "atla_config.h"
+#include "atla_memhandler.h"
+#include "atla_context.h"
 #include "atla/atla_ioaccess.h"
-#include "atla/atla_schema.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif//
+typedef void* (ATLA_CALLBACK *atMallocProc)(atsize_t size, void* user);
 
-typedef struct atIOAccess atIOAccess_t;
-typedef struct atAtlaContext atAtlaContext_t;
-typedef struct atAtlaDataBlob atAtlaDataBlob_t;
-typedef struct atDataSchema atDataSchema_t;
-typedef struct atMemoryHandler atMemoryHandler_t;
-typedef struct atDataDesc atDataDesc_t;
+struct atAtlaTypeData {
+	char const* name;
+	size_t size;
+};
+typedef struct atAtlaTypeData atAtlaTypeData_t; 
 
-atuint64 ATLA_API atGetAtlaVersion();
-atUUID_t ATLA_API atBuildAtlaStringUUID(const atchar* /*str*/, atuint32 /*strlen*/);
+struct atAtlaSerializer {
+	atAtlaContext_t* context;
+	uint32_t reading;
+	uint32_t version;
+	uint32_t objectListLen;
+	void** objectList;
+};
+typedef struct atAtlaSerializer atAtlaSerializer_t;
 
-atAtlaContext_t* ATLA_API atCreateAtlaContext(atMemoryHandler_t*);
-atErrorCode ATLA_API atAddDataSchema(atAtlaContext_t*, atDataSchema_t*);
+void atSerializeWrite(atAtlaSerializer_t* serializer, void* src, uint32_t element_size, uint32_t element_count);
+uint32_t atSerializeObjRef(atAtlaSerializer_t* serializer, void* src, char const* type_name);
+
+void atSerializeRead(atAtlaSerializer_t* serializer, void* dest, uint32_t element_size, uint32_t element_count);
+void atSerializeSkip(atAtlaSerializer_t* serializer, uint32_t element_size, uint32_t element_count);
+void* atSerializeReadObjRef(atAtlaSerializer_t* serializer);
+
+
+
+uint64_t ATLA_API atGetAtlaVersion();
+
+atAtlaContext_t* ATLA_API atCreateAtlaContext(uint32_t data_version, atMemoryHandler_t* mem_handler);
 atErrorCode ATLA_API atDestroyAtlaContext(atAtlaContext_t*);
 
+#if 0
 atAtlaDataBlob_t* ATLA_API atOpenAtlaDataBlob(atAtlaContext_t*, atIOAccess_t*, atuint32);
 void ATLA_API atCloseAtlaDataBlob(atAtlaDataBlob_t*);
 atErrorCode ATLA_API atSerialiseDataBlob(atAtlaDataBlob_t*);
@@ -69,9 +84,26 @@ atErrorCode ATLA_API atGetDataDescByIndex(atAtlaDataBlob_t*, atuint, atDataDesc_
 atErrorCode ATLA_API atGetDataDescByName(atAtlaDataBlob_t*, const atchar* /*objectname*/, atDataDesc_t*);
 atErrorCode ATLA_API atDeserialiseDataByIndex(atAtlaDataBlob_t*, atuint, void* /*output*/);
 atErrorCode ATLA_API atDeserialiseDataByName(atAtlaDataBlob_t*, const atchar* /*objectname*/, void* /*output*/);
+#endif
+/*
+
+	Atla - 
+	1) Should be a self describing format. i.e. Format can be read by other tools & data types within a serialised blob are 'understandable'. Could be optional?
+	2) Minimal code should be written by user. May result in a funky meta lang but avoids errors. Look at the LBP method and repeat includes to define
+		 define struct & serialise
+	3) Should provide a runtime reflection interface. Struct data described by arrays of elements(?) Must be optional!
+	4) Must be backward compat
+	5) Prasing should be simple and not use rewind seeking
+
+	Current thoughts:
+	* Pointers are stored as object IDs in a binary blob. Hash map on write to avoid rewriting the same data
+	* Footer describes all formats in blob (type ids & descriptors are saved on write?)
+	* Footer note object counts for pre-alloction.
+	* Borrow from LBP method. Single global version number, linear add to data, no remove (only macro to ommit data from future writes)
+
+*/
 
 #ifdef __cplusplus
 } //extern "C"
 #endif//
 
-#endif // ATLA_H__

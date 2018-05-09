@@ -26,14 +26,8 @@
 *********************************************************************/
 #pragma once
 
-#ifndef ATLA_TYPES_H__
-#define ATLA_TYPES_H__
-
 #include <stdlib.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif//
+#include <stdint.h>
 
 typedef size_t              atsize_t;
 typedef unsigned long long  atuint64;
@@ -95,8 +89,3 @@ typedef enum atErrorCode
     ATLA_EOUTOFRANGE            = -10
 } atErrorCode;
 
-#ifdef __cplusplus
-} //extern "C"
-#endif
-
-#endif // ATLA_TYPES_H__
