@@ -32,7 +32,8 @@
 
 struct atAtlaContext
 {
-    atMemoryHandler_t*  memCtx_;
+    atMemoryHandler_t*  memCtx;
+    struct atioaccess 				*ioCtx;
     //atuint              schemaCount_;
     //atDataSchema_t*     schemaHead_;
     ht_hash_table_t 		registeredTypes;

@@ -39,10 +39,10 @@ typedef void  (ATLA_CALLBACK *atFreeProc)(void* ptr, void* user);
 
 struct atMemoryHandler
 {
-    atMallocProc    memAlloc_;
-    atReallocProc		memRelloc;
-    atFreeProc      memFree_;
-    void*           memUser_;
+    atMallocProc    alloc;
+    atReallocProc		ralloc;
+    atFreeProc      free;
+    void*           user;
 };
 
 typedef struct atMemoryHandler atMemoryHandler_t;

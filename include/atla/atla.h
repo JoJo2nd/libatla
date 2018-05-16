@@ -40,29 +40,49 @@ extern "C" {
 #include "atla_context.h"
 #include "atla/atla_ioaccess.h"
 
-typedef void* (ATLA_CALLBACK *atMallocProc)(atsize_t size, void* user);
+typedef struct atAtlaSerializer atAtlaSerializer_t;
+
+typedef void (atSerializeTypeProc_t)(atAtlaSerializer_t*, void*);
 
 struct atAtlaTypeData {
-	char const* name;
-	size_t size;
+	char const* name; // if NULL then this is a native type (e.g. int, float, char, etc)
+	atSerializeTypeProc_t* proc;// NULL, if name is NULL
+	void* data;
+	uint32_t size;
+	uint32_t count;
+	uint32_t id;
+	uint32_t processed;
 };
 typedef struct atAtlaTypeData atAtlaTypeData_t; 
 
 struct atAtlaSerializer {
-	atAtlaContext_t* context;
+  atMemoryHandler_t*  mem;
+	atioaccess_t *io;
 	uint32_t reading;
 	uint32_t version;
-	uint32_t objectListLen;
-	void** objectList;
+	uint32_t nextID;
+	uint32_t depth;
+	uint32_t objectListLen, objectListRes;
+	atAtlaTypeData_t *objectList;
 };
-typedef struct atAtlaSerializer atAtlaSerializer_t;
+
+void atSerializeWriteBegin(atAtlaSerializer_t* serializer, atMemoryHandler_t* mem, atioaccess_t* context, uint32_t version);
+void atSerializeWriteRoot(atAtlaSerializer_t* serializer, void* data, atSerializeTypeProc_t* proc);
+void atSerializeWriteProcessPending(atAtlaSerializer_t* serializer);
+void atSerializeWriteFinalize(atAtlaSerializer_t* serializer);
 
 void atSerializeWrite(atAtlaSerializer_t* serializer, void* src, uint32_t element_size, uint32_t element_count);
-uint32_t atSerializeObjRef(atAtlaSerializer_t* serializer, void* src, char const* type_name);
+uint32_t atSerializeWritePendingBlob(atAtlaSerializer_t* serializer, void* data, uint32_t element_size, uint32_t count);
+uint32_t atSerializeWritePendingType(atAtlaSerializer_t* serializer, void* data, char const *name, atSerializeTypeProc_t* proc, uint32_t count);
+
+//uint32_t atSerializeObjRef(atAtlaSerializer_t* serializer, void* src, char const* type_name);
 
 void atSerializeRead(atAtlaSerializer_t* serializer, void* dest, uint32_t element_size, uint32_t element_count);
 void atSerializeSkip(atAtlaSerializer_t* serializer, uint32_t element_size, uint32_t element_count);
-void* atSerializeReadObjRef(atAtlaSerializer_t* serializer);
+void* atSerializeReadGetBlobLocation(atAtlaSerializer_t* serializer, uint32_t blob_id);
+void* atSerializeReadTypeLocation(atAtlaSerializer_t* serializer, uint32_t type_id, char const *name, atSerializeTypeProc_t* proc);
+
+//void* atSerializeReadObjRef(atAtlaSerializer_t* serializer);
 
 
 
@@ -71,20 +91,6 @@ uint64_t ATLA_API atGetAtlaVersion();
 atAtlaContext_t* ATLA_API atCreateAtlaContext(uint32_t data_version, atMemoryHandler_t* mem_handler);
 atErrorCode ATLA_API atDestroyAtlaContext(atAtlaContext_t*);
 
-#if 0
-atAtlaDataBlob_t* ATLA_API atOpenAtlaDataBlob(atAtlaContext_t*, atIOAccess_t*, atuint32);
-void ATLA_API atCloseAtlaDataBlob(atAtlaDataBlob_t*);
-atErrorCode ATLA_API atSerialiseDataBlob(atAtlaDataBlob_t*);
-atErrorCode ATLA_API atAddDataToBlob(atAtlaDataBlob_t*, const atchar* /*objectname*/, const atchar* /*schemaname*/, atuint32 /*count*/, void* /*data*/);
-atErrorCode ATLA_API atAddTypelessDataToBlob(atAtlaDataBlob_t*, const atchar* /*objectname*/, atuint32 /*size*/, atuint32 /*count*/, void* /*data*/);
-
-//TODO:
-atuint ATLA_API atGetDataCount(atAtlaDataBlob_t*);
-atErrorCode ATLA_API atGetDataDescByIndex(atAtlaDataBlob_t*, atuint, atDataDesc_t*);
-atErrorCode ATLA_API atGetDataDescByName(atAtlaDataBlob_t*, const atchar* /*objectname*/, atDataDesc_t*);
-atErrorCode ATLA_API atDeserialiseDataByIndex(atAtlaDataBlob_t*, atuint, void* /*output*/);
-atErrorCode ATLA_API atDeserialiseDataByName(atAtlaDataBlob_t*, const atchar* /*objectname*/, void* /*output*/);
-#endif
 /*
 
 	Atla - 
