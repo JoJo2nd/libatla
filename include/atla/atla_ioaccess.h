@@ -26,9 +26,6 @@
 *********************************************************************/
 #pragma once
 
-#ifndef ATLA_IOSTREAM_H__
-#define ATLA_IOSTREAM_H__
-
 #include "atla/atla_config.h"
 #include <stdio.h>
 
@@ -47,26 +44,21 @@ typedef enum atSeekOffset
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
 
-typedef atuint32 (ATLA_CALLBACK *atIOReadProc)(void* pBuffer, atuint32 size, void* user);
-typedef atuint32 (ATLA_CALLBACK *atIOWriteProc)(const void* pBuffer, atuint32 size, void* user);
-typedef atuint64 (ATLA_CALLBACK *atIOSeekProc)(atuint64 offset, atSeekOffset from, void* user);
-typedef atuint64 (ATLA_CALLBACK *atIOTellProc)(void* user);
+typedef void (ATLA_CALLBACK *atIOReadProc)(void* pBuffer, uint32_t size, void* user);
+typedef void (ATLA_CALLBACK *atIOWriteProc)(void const* pBuffer, uint32_t size, void* user);
+typedef uint32_t (ATLA_CALLBACK *atIOSeekProc)(uint32_t offset, atSeekOffset from, void* user);
+typedef uint64_t (ATLA_CALLBACK *atIOTellProc)(void* user);
 
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
 
-typedef struct atIOAccess
+typedef struct atioaccess
 {
-    atIOReadProc    readProc_;
-    atIOWriteProc   writeProc_;
-    atIOSeekProc    seekProc_;
-    atIOTellProc    tellProc_;
-    void*           user_;    
-} atIOAccess_t;
+    atIOReadProc    readProc;
+    atIOWriteProc   writeProc;
+    atIOSeekProc    seekProc;
+    //atIOTellProc    tellProc_;
+    void*           user;    
+} atioaccess_t;
 
-#ifdef __cplusplus
-} //extern "C"
-#endif//
-
-#endif // ATLA_IOSTREAM_H__
