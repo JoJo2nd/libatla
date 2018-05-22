@@ -47,7 +47,7 @@ typedef enum atSeekOffset
 typedef void (ATLA_CALLBACK *atIOReadProc)(void* pBuffer, uint32_t size, void* user);
 typedef void (ATLA_CALLBACK *atIOWriteProc)(void const* pBuffer, uint32_t size, void* user);
 typedef uint32_t (ATLA_CALLBACK *atIOSeekProc)(uint32_t offset, atSeekOffset from, void* user);
-typedef uint64_t (ATLA_CALLBACK *atIOTellProc)(void* user);
+typedef int64_t (ATLA_CALLBACK *atIOTellProc)(void* user);
 
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
@@ -58,7 +58,7 @@ typedef struct atioaccess
     atIOReadProc    readProc;
     atIOWriteProc   writeProc;
     atIOSeekProc    seekProc;
-    //atIOTellProc    tellProc_;
+    atIOTellProc    tellProc;
     void*           user;    
 } atioaccess_t;
 

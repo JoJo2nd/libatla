@@ -40,18 +40,26 @@ extern "C" {
 #include "atla_context.h"
 #include "atla/atla_ioaccess.h"
 
+typedef uint64_t at_loc_t;
+
 typedef struct atAtlaSerializer atAtlaSerializer_t;
 
 typedef void (atSerializeTypeProc_t)(atAtlaSerializer_t*, void*);
 
 struct atAtlaTypeData {
-	char const* name; // if NULL then this is a native type (e.g. int, float, char, etc)
-	atSerializeTypeProc_t* proc;// NULL, if name is NULL
+	union {
+		at_loc_t offset;
+		char const* ptr;
+	} name; // if NULL then this is a native type (e.g. int, float, char, etc)
+	union {
+		at_loc_t offset;
+		atSerializeTypeProc_t* ptr;
+	} proc;// NULL, if name is NULL
 	void* data;
 	uint32_t size;
 	uint32_t count;
 	uint32_t id;
-	uint32_t processed;
+	at_loc_t processed;
 };
 typedef struct atAtlaTypeData atAtlaTypeData_t; 
 

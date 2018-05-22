@@ -26,6 +26,7 @@
 *********************************************************************/
 
 #include "atla/atla.h"
+#include <string.h>
 
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
@@ -38,6 +39,11 @@
 static int addr_comp(void const *a, void const* b) {
 	atAtlaTypeData_t const *c = a, *d = b;
 	return (uintptr_t)c->data - (uintptr_t)d->data;
+}
+
+static int id_com(void const *a, void const* b) {
+	atAtlaTypeData_t const *c = a, *d = b;
+	return c->id - d->id;
 }
 
 uint64_t ATLA_API atGetAtlaVersion()
@@ -58,22 +64,79 @@ void atSerializeWriteBegin(atAtlaSerializer_t* serializer, atMemoryHandler_t* me
 }
 
 void atSerializeWriteRoot(atAtlaSerializer_t* serializer, void* data, atSerializeTypeProc_t* proc) {
+	uint32_t root_count = 1;
+	atSerializeWrite(serializer, &root_count, sizeof(uint32_t), 1);
 	(*proc)(serializer, data);
 }
 
 void atSerializeWriteProcessPending(atAtlaSerializer_t* serializer) {
-	//TOOD: walk the list of objects awaiting writes, find first that hasn't be done and do it
+	// walk the list of objects awaiting writes, find first that hasn't be done and do it
 	// continue until nothing is left to do...
+	int next_to_do = 0;
+	do {
+		next_to_do = serializer->objectListLen;
+		for (uint32_t i=0; i < serializer->objectListLen; ++i) {
+			if (serializer->objectList[i].processed == -1) {
+				// IDs are 1 based because zero is reserved for null pointers
+				if ((next_to_do+1) > serializer->objectList[i].id) {
+					next_to_do = i;
+				}
+			}
+		}
+		if (next_to_do < serializer->objectListLen) {
+			fprintf(stderr, "Processing object %u, %lu, %u\n", next_to_do, serializer->objectList[next_to_do].processed, serializer->objectList[next_to_do].count);
+			serializer->objectList[next_to_do].processed = serializer->io->tellProc(serializer->io->user);
+			if (!serializer->objectList[next_to_do].proc.ptr) {
+				//atomic data type, count first then data
+				atSerializeWrite(serializer, &serializer->objectList[next_to_do].count, sizeof(uint32_t), 1);
+				atSerializeWrite(serializer, 
+					serializer->objectList[next_to_do].data,
+					serializer->objectList[next_to_do].size,
+					serializer->objectList[next_to_do].count );
+			} else {
+				// non-atomic data type
+				uint32_t n = serializer->objectList[next_to_do].count;
+				uint32_t s = serializer->objectList[next_to_do].size;
+				atSerializeWrite(serializer, &n, sizeof(uint32_t), 1);
+				for (uint32_t i = 0; i < n; ++i) {
+					(*serializer->objectList[next_to_do].proc.ptr)(serializer, 
+						(uint8_t*)serializer->objectList[next_to_do].data+s*i);
+				}
+			}
+		}
+	} while (next_to_do < serializer->objectListLen);
 }
 
 void atSerializeWriteFinalize(atAtlaSerializer_t* serializer) {
-	//TOOD: sort object list by object ID (for easy look up next time)
-	//TODO: write the footer
+	// sort object list by object ID (for easy look up next time)
+	// write the footer
+	atioaccess_t *io = serializer->io;
+	uint32_t total_str_len = 0;
+	qsort(serializer->objectList, serializer->objectListLen, sizeof(atAtlaTypeData_t), id_com);
+	for (uint32_t i = 0, n = serializer->objectListLen; i < n; ++i) {
+		char const* name_str = serializer->objectList[i].name.ptr;
+		if (name_str) {
+			uint32_t offset = total_str_len;
+			uint32_t name_str_len = strlen(name_str)+1;
+			io->writeProc(name_str, name_str_len, io->user);
+			total_str_len += name_str_len;
+			for (uint32_t j = i; j < n; ++j) {
+				if (serializer->objectList[j].name.ptr == name_str) {
+					serializer->objectList[j].name.offset = total_str_len;
+					serializer->objectList[j].proc.offset = 0;
+				}
+			}
+		}
+	}
+
+	io->writeProc(serializer->objectList, sizeof(atAtlaTypeData_t)*serializer->objectListLen, io->user);
+	io->writeProc(&serializer->objectListLen, sizeof(uint32_t), io->user);
+	io->writeProc(&total_str_len, sizeof(uint32_t), io->user);
 }
 
 void atSerializeWrite(atAtlaSerializer_t* serializer, void* src, uint32_t element_size, uint32_t element_count) {
 	atioaccess_t *io = serializer->io;
-	io->writeProc(src, element_size, io->user);
+	io->writeProc(src, element_size*element_count, io->user);
 }
 
 uint32_t atSerializeWritePendingBlob(atAtlaSerializer_t* serializer, void* data, uint32_t element_size, uint32_t count) {
@@ -81,7 +144,7 @@ uint32_t atSerializeWritePendingBlob(atAtlaSerializer_t* serializer, void* data,
 
 	if (!data) return 0;
 	atMemoryHandler_t *mem = serializer->mem;
-	atAtlaTypeData_t new_blob = {	.name=NULL, .proc=NULL, .size=element_size, .count=count, .data=data, .id=serializer->nextID, .processed=0 };
+	atAtlaTypeData_t new_blob = {	.name.ptr=NULL, .proc.ptr=NULL, .size=element_size, .count=count, .data=data, .id=serializer->nextID, .processed=-1 };
 	atAtlaTypeData_t* found = bsearch(&new_blob, serializer->objectList, serializer->objectListLen, sizeof(atMemoryHandler_t), addr_comp);
 	if (found) return found->id;
 
@@ -100,7 +163,7 @@ uint32_t atSerializeWritePendingType(atAtlaSerializer_t* serializer, void* data,
 
 	if (!data) return 0;
 	atMemoryHandler_t *mem = serializer->mem;
-	atAtlaTypeData_t new_blob = {	.name=name, .proc=proc, .size=0, .count=count, .data=data, .id=serializer->nextID, .processed=0 };
+	atAtlaTypeData_t new_blob = {	.name.ptr=name, .proc.ptr=proc, .size=0, .count=count, .data=data, .id=serializer->nextID, .processed=-1 };
 	atAtlaTypeData_t* found = bsearch(&new_blob, serializer->objectList, serializer->objectListLen, sizeof(atMemoryHandler_t), addr_comp);
 	if (found) return found->id;
 
