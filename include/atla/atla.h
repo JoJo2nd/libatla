@@ -40,11 +40,19 @@ extern "C" {
 #include "atla_context.h"
 #include "atla/atla_ioaccess.h"
 
+#define ATLA_USER_TAG_LEN (32)
+
 typedef uint64_t at_loc_t;
+typedef uintptr_t at_handle_t;
+
+#define at_invalid_handle (0)
 
 typedef struct atAtlaSerializer atAtlaSerializer_t;
 
 typedef void (atSerializeTypeProc_t)(atAtlaSerializer_t*, void*);
+
+#define at_rflag_root (0x1)
+#define at_wflag_processed (0x2)
 
 struct atAtlaTypeData {
 	union {
@@ -59,7 +67,13 @@ struct atAtlaTypeData {
 	uint32_t size;
 	uint32_t count;
 	uint32_t id;
-	at_loc_t processed;
+	at_loc_t foffset; // location with the atla file 
+	// extra members needed for reads
+	union {
+		at_loc_t offset;
+		void* ptr;
+	} rmem;// always null for write, on read filled in by user
+	uint32_t flags; 
 };
 typedef struct atAtlaTypeData atAtlaTypeData_t; 
 
@@ -72,19 +86,31 @@ struct atAtlaSerializer {
 	uint32_t depth;
 	uint32_t objectListLen, objectListRes;
 	atAtlaTypeData_t *objectList;
+  char userTag[ATLA_USER_TAG_LEN];
 };
 
-void atSerializeWriteBegin(atAtlaSerializer_t* serializer, atMemoryHandler_t* mem, atioaccess_t* context, uint32_t version);
+void atSerializeWriteBegin(atAtlaSerializer_t* serializer, char const* usertag, atMemoryHandler_t* mem, atioaccess_t* context, uint32_t version);
 void atSerializeWriteRoot(atAtlaSerializer_t* serializer, void* data, atSerializeTypeProc_t* proc);
 void atSerializeWriteProcessPending(atAtlaSerializer_t* serializer);
 void atSerializeWriteFinalize(atAtlaSerializer_t* serializer);
 
+// Hidden interface functions???
 void atSerializeWrite(atAtlaSerializer_t* serializer, void* src, uint32_t element_size, uint32_t element_count);
 uint32_t atSerializeWritePendingBlob(atAtlaSerializer_t* serializer, void* data, uint32_t element_size, uint32_t count);
 uint32_t atSerializeWritePendingType(atAtlaSerializer_t* serializer, void* data, char const *name, atSerializeTypeProc_t* proc, uint32_t count);
 
 //uint32_t atSerializeObjRef(atAtlaSerializer_t* serializer, void* src, char const* type_name);
 
+// libatla reading interface
+
+void atSerializeReadBegin(atAtlaSerializer_t* serializer, atMemoryHandler_t* mem, atioaccess_t* context, uint32_t version);
+at_handle_t atSerializeReadEnumTypeBlobs(atAtlaSerializer_t* serializer, at_handle_t prev_handle);
+atAtlaTypeData_t const* atSerializeReadGetTypeBlob(atAtlaSerializer_t* serializer, at_handle_t prev_handle);
+void atSerializeReadSetTypeMem(atAtlaSerializer_t* serializer, uint32_t id, void* mem);
+void atSerializeReadRoot(atAtlaSerializer_t* serializer, atSerializeTypeProc_t* proc);
+void atSerializeReadFinalize(atAtlaSerializer_t* serializer);
+
+// Hidden interface functions???
 void atSerializeRead(atAtlaSerializer_t* serializer, void* dest, uint32_t element_size, uint32_t element_count);
 void atSerializeSkip(atAtlaSerializer_t* serializer, uint32_t element_size, uint32_t element_count);
 void* atSerializeReadGetBlobLocation(atAtlaSerializer_t* serializer, uint32_t blob_id);
