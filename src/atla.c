@@ -51,7 +51,7 @@ uint64_t ATLA_API atGetAtlaVersion()
     return (((atuint64)(ATLA_VERSION_MAJOR & 0xFFFF) << 48) | ((atuint64)(ATLA_VERSION_MAJOR & 0xFFFF) << 32) | ATLA_VERSION_REV);
 }
 
-void atSerializeWriteBegin(atAtlaSerializer_t* serializer, atMemoryHandler_t* mem, atioaccess_t* io, uint32_t version) {
+void atSerializeWriteBegin(atAtlaSerializer_t* serializer, char const* usertag, atMemoryHandler_t* mem, atioaccess_t* io, uint32_t version) {
 	serializer->mem = mem;
 	serializer->io = io;
 	serializer->reading = 0;
@@ -61,11 +61,12 @@ void atSerializeWriteBegin(atAtlaSerializer_t* serializer, atMemoryHandler_t* me
 	serializer->objectListLen = 0;
 	serializer->objectListRes = 16;
 	serializer->objectList = mem->alloc(sizeof(atAtlaTypeData_t)*serializer->objectListRes, mem->user);
+  strncpy(serializer->userTag, usertag, ATLA_USER_TAG_LEN);
 }
 
 void atSerializeWriteRoot(atAtlaSerializer_t* serializer, void* data, atSerializeTypeProc_t* proc) {
-	uint32_t root_count = 1;
-	atSerializeWrite(serializer, &root_count, sizeof(uint32_t), 1);
+  atSerializeWrite(serializer, &serializer->userTag, 1, ATLA_USER_TAG_LEN);
+  atSerializeWrite(serializer, &serializer->version, sizeof(uint32_t), 1);
 	(*proc)(serializer, data);
 }
 
@@ -76,7 +77,7 @@ void atSerializeWriteProcessPending(atAtlaSerializer_t* serializer) {
 	do {
 		next_to_do = serializer->objectListLen;
 		for (uint32_t i=0; i < serializer->objectListLen; ++i) {
-			if (serializer->objectList[i].processed == -1) {
+			if (serializer->objectList[i].flags & at_wflag_processed) {
 				// IDs are 1 based because zero is reserved for null pointers
 				if ((next_to_do+1) > serializer->objectList[i].id) {
 					next_to_do = i;
@@ -84,8 +85,8 @@ void atSerializeWriteProcessPending(atAtlaSerializer_t* serializer) {
 			}
 		}
 		if (next_to_do < serializer->objectListLen) {
-			fprintf(stderr, "Processing object %u, %lu, %u\n", next_to_do, serializer->objectList[next_to_do].processed, serializer->objectList[next_to_do].count);
-			serializer->objectList[next_to_do].processed = serializer->io->tellProc(serializer->io->user);
+			serializer->objectList[next_to_do].foffset = serializer->io->tellProc(serializer->io->user);
+			serializer->objectList[next_to_do].flags |= at_wflag_processed;
 			if (!serializer->objectList[next_to_do].proc.ptr) {
 				//atomic data type, count first then data
 				atSerializeWrite(serializer, &serializer->objectList[next_to_do].count, sizeof(uint32_t), 1);
@@ -144,7 +145,7 @@ uint32_t atSerializeWritePendingBlob(atAtlaSerializer_t* serializer, void* data,
 
 	if (!data) return 0;
 	atMemoryHandler_t *mem = serializer->mem;
-	atAtlaTypeData_t new_blob = {	.name.ptr=NULL, .proc.ptr=NULL, .size=element_size, .count=count, .data=data, .id=serializer->nextID, .processed=-1 };
+	atAtlaTypeData_t new_blob = {	.name.ptr=NULL, .proc.ptr=NULL, .size=element_size, .count=count, .data=data, .id=serializer->nextID, .foffset=0, .flags=0 };
 	atAtlaTypeData_t* found = bsearch(&new_blob, serializer->objectList, serializer->objectListLen, sizeof(atMemoryHandler_t), addr_comp);
 	if (found) return found->id;
 
@@ -163,7 +164,7 @@ uint32_t atSerializeWritePendingType(atAtlaSerializer_t* serializer, void* data,
 
 	if (!data) return 0;
 	atMemoryHandler_t *mem = serializer->mem;
-	atAtlaTypeData_t new_blob = {	.name.ptr=name, .proc.ptr=proc, .size=0, .count=count, .data=data, .id=serializer->nextID, .processed=-1 };
+	atAtlaTypeData_t new_blob = {	.name.ptr=name, .proc.ptr=proc, .size=0, .count=count, .data=data, .id=serializer->nextID, .foffset=0, .flags=0};
 	atAtlaTypeData_t* found = bsearch(&new_blob, serializer->objectList, serializer->objectListLen, sizeof(atMemoryHandler_t), addr_comp);
 	if (found) return found->id;
 
@@ -197,3 +198,14 @@ void* atSerializeReadTypeLocation(atAtlaSerializer_t* serializer, uint32_t type_
 	//TODO
 	return NULL;
 }
+
+void atSerializeReadBegin(atAtlaSerializer_t* serializer, atMemoryHandler_t* mem, atioaccess_t* io, uint32_t version) {
+  //atioaccess_t *io = serializer->io;
+  // TODO: Init the read of the serializer struct...
+  serializer->io = io;
+  io->readProc(serializer->userTag, ATLA_USER_TAG_LEN, io->user);
+  io->readProc(&serializer->version, sizeof(serializer->version), io->user);
+}
+
+
+
