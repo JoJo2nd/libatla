@@ -16,7 +16,7 @@
     "BinPackArguments": false,
     "BinPackParameters": false,
     "BreakBeforeBraces": "Attach",
-    "ColumnLimit": 120,
+    "ColumnLimit": 80,
     "ConstructorInitializerAllOnOneLineOrOnePerLine": true,
     "ConstructorInitializerIndentWidth": 2,
     "ContinuationIndentWidth": 2,

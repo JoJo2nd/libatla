@@ -25,9 +25,9 @@ struct ht_hash_table {
 typedef struct ht_hash_table ht_hash_table_t;
 
 void ht_table_init(ht_hash_table_t* table,
-                                     uint32_t (*in_hash_key)(void const*),
-                                     int (*in_compare_key)(void const*, void const*),
-                                     void (*in_value_free)(void const* k, void* v));
+                   uint32_t (*in_hash_key)(void const*),
+                   int (*in_compare_key)(void const*, void const*),
+                   void (*in_value_free)(void const* k, void* v));
 void ht_table_insert(ht_hash_table_t* hash_tbl, void const* key, void* val);
 void ht_table_destroy(ht_hash_table_t* hash_tbl);
 void* ht_table_find(ht_hash_table_t* hash_tbl, void const* key);
