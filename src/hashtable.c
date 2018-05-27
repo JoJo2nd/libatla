@@ -20,7 +20,10 @@ struct ht_hash_elem {
   void*       value;
 };
 
-static void insert_helper(ht_hash_table_t* hash_tbl, uint32_t hash, void const* key, void* val);
+static void insert_helper(ht_hash_table_t* hash_tbl,
+                          uint32_t         hash,
+                          void const*      key,
+                          void*            val);
 
 static uint32_t hash_key(ht_hash_table_t* hash_tbl, void const* key) {
   uint32_t h = hash_tbl->hash_key(key);
@@ -45,8 +48,11 @@ static int desired_pos(const ht_hash_table_t* hash_tbl, uint32_t hash) {
   return hash & hash_tbl->mask;
 }
 
-static int probe_distance(const ht_hash_table_t* hash_tbl, uint32_t hash, uint32_t slot_index) {
-  return (slot_index + hash_tbl->capacity - desired_pos(hash_tbl, hash)) & hash_tbl->mask;
+static int probe_distance(const ht_hash_table_t* hash_tbl,
+                          uint32_t               hash,
+                          uint32_t               slot_index) {
+  return (slot_index + hash_tbl->capacity - desired_pos(hash_tbl, hash)) &
+         hash_tbl->mask;
 }
 
 static uint32_t elem_hash(const ht_hash_table_t* hash_tbl, int ix) {
@@ -69,15 +75,15 @@ static void alloc(ht_hash_table_t* hash_tbl) {
 
 static void rehash(ht_hash_table_t* hash_tbl) {
   ht_elem_t* old_elems = hash_tbl->buffer;
-  int         old_capacity = hash_tbl->capacity;
-  uint32_t*   old_hashes = hash_tbl->hashes;
+  int        old_capacity = hash_tbl->capacity;
+  uint32_t*  old_hashes = hash_tbl->hashes;
   hash_tbl->capacity *= 2;
   alloc(hash_tbl);
 
   // now copy over old elems
   for (int i = 0; i < old_capacity; ++i) {
     ht_elem_t* e = old_elems + i;
-    uint32_t    hash = old_hashes[i];
+    uint32_t   hash = old_hashes[i];
     if (hash != 0 && !is_deleted(hash)) {
       insert_helper(hash_tbl, hash, &e->key, e->value);
     }
@@ -87,13 +93,20 @@ static void rehash(ht_hash_table_t* hash_tbl) {
   free(old_hashes);
 }
 
-static void construct(ht_hash_table_t* hash_tbl, int ix, uint32_t hash, void const* key, void* val) {
+static void construct(ht_hash_table_t* hash_tbl,
+                      int              ix,
+                      uint32_t         hash,
+                      void const*      key,
+                      void*            val) {
   hash_tbl->buffer[ix].value = val;
   hash_tbl->buffer[ix].key = key;
   hash_tbl->hashes[ix] = hash;
 }
 
-static void insert_helper(ht_hash_table_t* hash_tbl, uint32_t hash, void const* key, void* val) {
+static void insert_helper(ht_hash_table_t* hash_tbl,
+                          uint32_t         hash,
+                          void const*      key,
+                          void*            val) {
   int pos = desired_pos(hash_tbl, hash);
   int dist = 0;
   for (;;) {
@@ -105,7 +118,8 @@ static void insert_helper(ht_hash_table_t* hash_tbl, uint32_t hash, void const* 
     // If the existing elem has probed less than us, then swap places with
     // existing
     // elem, and keep going to find another slot for that elem.
-    int existing_elem_probe_dist = probe_distance(hash_tbl, elem_hash(hash_tbl, pos), pos);
+    int existing_elem_probe_dist =
+      probe_distance(hash_tbl, elem_hash(hash_tbl, pos), pos);
     if (existing_elem_probe_dist < dist) {
       if (is_deleted(elem_hash(hash_tbl, pos))) {
         construct(hash_tbl, pos, hash, key, val);
@@ -142,7 +156,8 @@ static int lookup_index(ht_hash_table_t* hash_tbl, void const* key) {
       return -1;
     else if (dist > probe_distance(hash_tbl, element_hash, pos))
       return -1;
-    else if (element_hash == hash && hash_tbl->compare_key(hash_tbl->buffer[pos].key, key) == 0)
+    else if (element_hash == hash &&
+             hash_tbl->compare_key(hash_tbl->buffer[pos].key, key) == 0)
       return pos;
 
     pos = (pos + 1) & hash_tbl->mask;
@@ -152,9 +167,9 @@ static int lookup_index(ht_hash_table_t* hash_tbl, void const* key) {
 
 // public interface
 void ht_table_init(ht_hash_table_t* hash_tbl,
-                    uint32_t (*in_hash_key)(void const*),
-                    int (*in_compare_key)(void const*, void const*),
-                    void (*in_value_free)(void const* k, void* v)) {
+                   uint32_t (*in_hash_key)(void const*),
+                   int (*in_compare_key)(void const*, void const*),
+                   void (*in_value_free)(void const* k, void* v)) {
   //: buffer(nullptr), num_elems(0), capacity(INITIAL_SIZE)
   memset(hash_tbl, 0, sizeof(ht_hash_table_t));
   hash_tbl->hash_key = in_hash_key;
@@ -175,7 +190,8 @@ void ht_table_destroy(ht_hash_table_t* hash_tbl) {
   for (int i = 0; i < hash_tbl->capacity; ++i) {
     if (elem_hash(hash_tbl, i) != 0) {
       if (hash_tbl->value_free) {
-        hash_tbl->value_free(hash_tbl->buffer[i].key, hash_tbl->buffer[i].value);
+        hash_tbl->value_free(hash_tbl->buffer[i].key,
+                             hash_tbl->buffer[i].value);
       }
     }
   }
