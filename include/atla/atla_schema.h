@@ -48,7 +48,8 @@ be
 #define ATLA_BEGIN(type) struct type {
 #define ATLA_END(type)                                                         \
   }                                                                            \
-  ;
+  ;                                                                            \
+  extern atAtlaRuntimeTypeInfo_t* atla_##type##_reg() { return NULL; }
 
 #elif ATLA_DATA_WRITE
 
@@ -75,7 +76,7 @@ be
   }
 
 #define ATLA_ADD_TYPE_D(ver, type, field)                                      \
-  if (serializer->version >= ptr->field) {                                     \
+  if (serializer->version >= ver) {                                            \
     if (serializer->reading) {                                                 \
       atSerializeRead(serializer, &(ptr->field), sizeof(type), 1);             \
     } else {                                                                   \
@@ -87,7 +88,7 @@ be
     if (serializer->reading) {                                                 \
       uint32_t a;                                                              \
       atSerializeRead(serializer, &a, sizeof(a), 1);                           \
-      ptr->field = atSerializeReadGetBlobLocation(serializer, a);              \
+      ptr->field = (type*)atSerializeReadGetBlobLocation(serializer, a);       \
     } else {                                                                   \
       uint32_t id = atSerializeWritePendingBlob(                               \
         serializer, ptr->field, sizeof(*ptr->field), ptr->count);              \
@@ -101,7 +102,7 @@ be
   }
 
 #define ATLA_ADD_TYPE_S(ver, type, field)                                      \
-  if (serializer->version >= ptr->field) {                                     \
+  if (serializer->version >= ver) {                                            \
     ATLAI_RW_TYPES(ptr->(field), type)                                         \
   }
 #define ATLA_ADD_TYPE_SPTR(ver, type, field, count)                            \
@@ -110,11 +111,11 @@ be
     if (serializer->reading) {                                                 \
       uint32_t a;                                                              \
       atSerializeRead(serializer, &a, sizeof(a), 1);                           \
-      ptr->field = atSerializeReadTypeLocation(                                \
-        serializer, a, type_name, atla_serialize_##type);                      \
+      ptr->field = (type*)atSerializeReadTypeLocation(                         \
+        serializer, a, #type, atla_serialize_##type);                          \
     } else {                                                                   \
       uint32_t id = atSerializeWritePendingType(                               \
-        serializer, ptr->field, type_name, atla_serialize_##type, ptr->count); \
+        serializer, ptr->field, #type, atla_serialize_##type, ptr->count);     \
       atSerializeWrite(serializer, &id, sizeof(id), 1);                        \
     }                                                                          \
   }
@@ -128,10 +129,11 @@ be
 #define ATLA_BEGIN(type)                                                       \
   void atla_serialize_##type(atAtlaSerializer_t* serializer, void* vptr) {     \
     static char const* type_name = #type;                                      \
-    struct type*       ptr = vptr;                                             \
+    struct type*       ptr = (struct type*)vptr;                               \
     serializer->depth++;
 #define ATLA_END(type)                                                         \
-  if (serializer->depth == 1) atSerializeWriteProcessPending(serializer);      \
+  if (serializer->depth == 1 && !serializer->reading)                          \
+    atSerializeWriteProcessPending(serializer);                                \
   --serializer->depth;                                                         \
   }
 

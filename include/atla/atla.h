@@ -28,6 +28,11 @@ be
 
 #pragma once
 
+#include "atla_config.h"
+#include "atla_memhandler.h"
+#include "atla_context.h"
+#include "atla/atla_ioaccess.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif //
@@ -35,11 +40,6 @@ extern "C" {
 /*
  * Main Include for alta lib
  **/
-
-#include "atla_config.h"
-#include "atla_memhandler.h"
-#include "atla_context.h"
-#include "atla/atla_ioaccess.h"
 
 #define ATLA_USER_TAG_LEN (32)
 
@@ -54,6 +54,7 @@ typedef void(atSerializeTypeProc_t)(atAtlaSerializer_t*, void*);
 
 #define at_rflag_root (0x1)
 #define at_wflag_processed (0x2)
+#define at_rflag_hasname (0x4)
 
 struct atAtlaTypeData {
   union {
@@ -87,8 +88,17 @@ struct atAtlaSerializer {
   uint32_t           depth;
   uint32_t           objectListLen, objectListRes;
   atAtlaTypeData_t*  objectList;
+  char*              rStrings;
   char               userTag[ATLA_USER_TAG_LEN];
 };
+
+typedef struct atAtlaRuntimeTypeInfo {
+  char const* name;
+  size_t size;
+  struct atAtlaRuntimeTypeInfo* next;
+} atAtlaRuntimeTypeInfo_t;
+
+extern atAtlaRuntimeTypeInfo_t atla_runtime_type_list; 
 
 void atSerializeWriteBegin(atAtlaSerializer_t* serializer,
                            char const*         usertag,
@@ -125,16 +135,11 @@ void atSerializeReadBegin(atAtlaSerializer_t* serializer,
                           atMemoryHandler_t*  mem,
                           atioaccess_t*       context,
                           uint32_t            version);
-at_handle_t atSerializeReadEnumTypeBlobs(atAtlaSerializer_t* serializer,
-                                         at_handle_t         prev_handle);
-atAtlaTypeData_t const*
-atSerializeReadGetTypeBlob(atAtlaSerializer_t* serializer,
-                           at_handle_t         prev_handle);
-void atSerializeReadSetTypeMem(atAtlaSerializer_t* serializer,
-                               uint32_t            id,
-                               void*               mem);
+
 void atSerializeReadRoot(atAtlaSerializer_t*    serializer,
+                         void*                  dest,
                          atSerializeTypeProc_t* proc);
+
 void atSerializeReadFinalize(atAtlaSerializer_t* serializer);
 
 // Hidden interface functions???

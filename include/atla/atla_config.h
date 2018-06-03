@@ -53,6 +53,12 @@ extern "C" {
 #define ATLA_USE_ASSERT (1)
 #endif
 
+#if ATAL_USE_ASSERT
+# define atla_assert(cond, msg, ...)
+#else
+# define atla_assert(cond, msg, ...)
+#endif
+
 #ifdef COMPILE_LIB_ATLA
 #define ATLA_ENSURE_PRIVATE_HEADER()
 #else
