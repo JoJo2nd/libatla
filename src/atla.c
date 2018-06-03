@@ -37,6 +37,15 @@ be
 #define ATLA_VERSION_MINOR (1)
 #define ATLA_VERSION_REV (1)
 
+atAtlaRuntimeTypeInfo_t atla_runtime_type_list;
+
+atAtlaRuntimeTypeInfo_t* atla_type_reg(atAtlaRuntimeTypeInfo_t* head,
+                                       atAtlaRuntimeTypeInfo_t* next) {
+  atAtlaRuntimeTypeInfo_t* tail = head->next;
+  head->next = next;
+  return tail;
+}
+
 static int addr_comp(void const* a, void const* b) {
   atAtlaTypeData_t const *c = a, *d = b;
   return (uintptr_t)c->data - (uintptr_t)d->data;
@@ -74,6 +83,7 @@ void atSerializeWriteRoot(atAtlaSerializer_t*    serializer,
                           void*                  data,
                           atSerializeTypeProc_t* proc) {
   atSerializeWrite(serializer, &serializer->userTag, 1, ATLA_USER_TAG_LEN);
+  atSerializeWrite(serializer, "ATLA", 1, 4);
   atSerializeWrite(serializer, &serializer->version, sizeof(uint32_t), 1);
   (*proc)(serializer, data);
 }
@@ -86,7 +96,7 @@ void atSerializeWriteProcessPending(atAtlaSerializer_t* serializer) {
   do {
     next_to_do = serializer->objectListLen;
     for (uint32_t i = 0; i < serializer->objectListLen; ++i) {
-      if (serializer->objectList[i].flags & at_wflag_processed) {
+      if ((serializer->objectList[i].flags & at_wflag_processed) == 0) {
         // IDs are 1 based because zero is reserved for null pointers
         if ((next_to_do + 1) > serializer->objectList[i].id) {
           next_to_do = i;
@@ -95,7 +105,7 @@ void atSerializeWriteProcessPending(atAtlaSerializer_t* serializer) {
     }
     if (next_to_do < serializer->objectListLen) {
       serializer->objectList[next_to_do].foffset =
-        serializer->io->tellProc(serializer->io->user);
+        serializer->io->tellProc(serializer->io->user) + sizeof(uint32_t);
       serializer->objectList[next_to_do].flags |= at_wflag_processed;
       if (!serializer->objectList[next_to_do].proc.ptr) {
         // atomic data type, count first then data
@@ -132,18 +142,20 @@ void atSerializeWriteFinalize(atAtlaSerializer_t* serializer) {
         sizeof(atAtlaTypeData_t),
         id_com);
   for (uint32_t i = 0, n = serializer->objectListLen; i < n; ++i) {
+    serializer->objectList[i].data = NULL;
     char const* name_str = serializer->objectList[i].name.ptr;
     if (name_str) {
       uint32_t offset = total_str_len;
       uint32_t name_str_len = strlen(name_str) + 1;
       io->writeProc(name_str, name_str_len, io->user);
-      total_str_len += name_str_len;
+      serializer->objectList[i].flags |= at_rflag_hasname;
       for (uint32_t j = i; j < n; ++j) {
         if (serializer->objectList[j].name.ptr == name_str) {
           serializer->objectList[j].name.offset = total_str_len;
           serializer->objectList[j].proc.offset = 0;
         }
       }
+      total_str_len += name_str_len;
     }
   }
 
@@ -261,7 +273,7 @@ void atSerializeSkip(atAtlaSerializer_t* serializer,
 void* atSerializeReadGetBlobLocation(atAtlaSerializer_t* serializer,
                                      uint32_t            blob_id) {
   if (blob_id == 0) return NULL;
-  return serializer->objectList[blob_id].data;
+  return serializer->objectList[blob_id-1].rmem.ptr;
 }
 
 
@@ -269,17 +281,91 @@ void* atSerializeReadTypeLocation(atAtlaSerializer_t*    serializer,
                                   uint32_t               type_id,
                                   char const*            name,
                                   atSerializeTypeProc_t* proc) {
-  // TODO
-  return NULL;
+  if (type_id == 0) return NULL;
+  serializer->objectList[type_id-1].proc.ptr = proc;
+  return serializer->objectList[type_id-1].rmem.ptr;
 }
 
 void atSerializeReadBegin(atAtlaSerializer_t* serializer,
                           atMemoryHandler_t*  mem,
                           atioaccess_t*       io,
                           uint32_t            version) {
-  // atioaccess_t *io = serializer->io;
-  // TODO: Init the read of the serializer struct...
+  uint32_t string_table_len;
+  char     atla_tag[5] = {0};
+  memset(serializer, 0, sizeof(atAtlaSerializer_t));
   serializer->io = io;
+  serializer->mem = mem;
+  serializer->reading = 1;
+  serializer->version = version;
   io->readProc(serializer->userTag, ATLA_USER_TAG_LEN, io->user);
+  io->readProc(atla_tag, 4, io->user);
   io->readProc(&serializer->version, sizeof(serializer->version), io->user);
+  io->seekProc(-sizeof(uint32_t) * 2, eSeekOffset_End, io->user);
+  io->readProc(&serializer->objectListLen, sizeof(uint32_t), io->user);
+  io->readProc(&string_table_len, sizeof(uint32_t), io->user);
+  serializer->objectList =
+    mem->alloc(sizeof(atAtlaTypeData_t) * serializer->objectListLen, mem->user);
+  serializer->objectListRes = serializer->objectListLen;
+  serializer->rStrings = mem->alloc(string_table_len, mem->user);
+  io->seekProc(-(serializer->objectListLen * sizeof(atAtlaTypeData_t) +
+                 string_table_len + sizeof(uint32_t) * 2),
+               eSeekOffset_Current,
+               io->user);
+  io->readProc(serializer->rStrings, string_table_len, io->user);
+  io->readProc(serializer->objectList,
+               serializer->objectListLen * sizeof(atAtlaTypeData_t),
+               io->user);
+
+  for (uint32_t i = 0, n = serializer->objectListLen; i < n; ++i) {
+    serializer->objectList[i].name.ptr =
+      serializer->objectList[i].flags & at_rflag_hasname
+        ? serializer->rStrings + serializer->objectList[i].name.offset
+        : NULL;
+  }
+}
+
+void atSerializeReadRoot(atAtlaSerializer_t*    serializer,
+                         void*                  dest,
+                         atSerializeTypeProc_t* proc) {
+  atioaccess_t* io = serializer->io;
+  // check that all objects have memory allocated for them.
+  for (uint32_t i = 0, n = serializer->objectListLen; i < n; ++i) {
+    if (serializer->objectList[i].rmem.ptr == 0) {
+      atla_assert(
+        false,
+        "Object in the object list hasn't been assigned memory to read into");
+      return;
+    }
+  }
+
+  io->seekProc(
+    ATLA_USER_TAG_LEN + sizeof(uint32_t) + 4, eSeekOffset_Begin, io->user);
+  (*proc)(serializer, dest);
+
+  int work_to_do = 0;
+  do {
+    for (uint32_t i = 0, n = serializer->objectListLen; i < n; ++i) {
+      atAtlaTypeData_t* tdata = &serializer->objectList[i];
+      if (tdata->name.ptr) {
+        if (tdata->proc.ptr) {
+          io->seekProc(tdata->foffset, eSeekOffset_Begin, io->user);
+          for (uint32_t j = 0, m = tdata->count; j < m; ++j) {
+            (*tdata->proc.ptr)(serializer, tdata->rmem.ptr + (tdata->size * j));
+          }
+        } else {
+          work_to_do = 1;
+        }
+      } else {
+        io->seekProc(tdata->foffset, eSeekOffset_Begin, io->user);
+        io->readProc(tdata->rmem.ptr, tdata->size * tdata->count, io->user);
+      }
+    }
+  } while (work_to_do);
+}
+
+void atSerializeReadFinalize(atAtlaSerializer_t* serializer) {
+  atMemoryHandler_t* mem = serializer->mem;
+  mem->free(serializer->rStrings, mem->user);
+  mem->free(serializer->objectList, mem->user);
+  memset(serializer, 0, sizeof(atAtlaSerializer_t));
 }
