@@ -30,7 +30,7 @@ be
 
 #include "atla_config.h"
 #include "atla_memhandler.h"
-#include "atla_context.h"
+#include "hashtable.h"
 #include "atla/atla_ioaccess.h"
 
 #ifdef __cplusplus
@@ -56,6 +56,19 @@ typedef void(atSerializeTypeProc_t)(atAtlaSerializer_t*, void*);
 #define at_wflag_processed (0x2)
 #define at_rflag_hasname (0x4)
 
+typedef struct atAtlaTInfo {
+  char const* name;
+  size_t      size;
+} atAtlaTInfo_t;
+
+struct atAtlaContext {
+  atMemoryHandler_t mem;
+  ht_hash_table_t   typeLUT;
+  atAtlaTInfo_t*    types;
+  uint32_t          typesCount;
+};
+typedef struct atAtlaContext atAtlaContext_t;
+
 struct atAtlaTypeData {
   union {
     at_loc_t    offset;
@@ -79,7 +92,13 @@ struct atAtlaTypeData {
 };
 typedef struct atAtlaTypeData atAtlaTypeData_t;
 
+typedef struct atAddressIDPair {
+  void*    address;
+  uint32_t index;
+} atAddressIDPair_t;
+
 struct atAtlaSerializer {
+  atAtlaContext_t*   ctx;
   atMemoryHandler_t* mem;
   atioaccess_t*      io;
   uint32_t           reading;
@@ -88,19 +107,21 @@ struct atAtlaSerializer {
   uint32_t           depth;
   uint32_t           objectListLen, objectListRes;
   atAtlaTypeData_t*  objectList;
+  atAddressIDPair_t* idList;
   char*              rStrings;
   char               userTag[ATLA_USER_TAG_LEN];
 };
 
 typedef struct atAtlaRuntimeTypeInfo {
-  char const* name;
-  size_t size;
+  char const*                   name;
+  size_t                        size;
   struct atAtlaRuntimeTypeInfo* next;
 } atAtlaRuntimeTypeInfo_t;
 
-extern atAtlaRuntimeTypeInfo_t atla_runtime_type_list; 
+extern atAtlaRuntimeTypeInfo_t atla_runtime_type_list;
 
 void atSerializeWriteBegin(atAtlaSerializer_t* serializer,
+                           atAtlaContext_t*    ctx,
                            char const*         usertag,
                            atMemoryHandler_t*  mem,
                            atioaccess_t*       context,
@@ -124,6 +145,7 @@ uint32_t atSerializeWritePendingType(atAtlaSerializer_t*    serializer,
                                      void*                  data,
                                      char const*            name,
                                      atSerializeTypeProc_t* proc,
+                                     uint32_t               element_size,
                                      uint32_t               count);
 
 // uint32_t atSerializeObjRef(atAtlaSerializer_t* serializer, void* src, char
@@ -132,6 +154,7 @@ uint32_t atSerializeWritePendingType(atAtlaSerializer_t*    serializer,
 // libatla reading interface
 
 void atSerializeReadBegin(atAtlaSerializer_t* serializer,
+                          atAtlaContext_t*    ctx,
                           atMemoryHandler_t*  mem,
                           atioaccess_t*       context,
                           uint32_t            version);
@@ -161,10 +184,16 @@ void* atSerializeReadTypeLocation(atAtlaSerializer_t*    serializer,
 
 
 uint64_t ATLA_API atGetAtlaVersion();
+void ATLA_API atCreateAtlaContext(atAtlaContext_t*         ctx,
+                                  atMemoryHandler_t const* mem_handler);
+void ATLA_API atDestroyAtlaContext(atAtlaContext_t*);
+void ATLA_API atContextRegisterType(atAtlaContext_t* ctx,
+                                    char const*      name,
+                                    size_t           size);
 
-atAtlaContext_t* ATLA_API atCreateAtlaContext(uint32_t           data_version,
-                                              atMemoryHandler_t* mem_handler);
-atErrorCode ATLA_API atDestroyAtlaContext(atAtlaContext_t*);
+#define atContextReg(ctx, type)                                                \
+  void atla_##type##_reg (atAtlaContext_t* c);                    \
+  atla_##type##_reg ((ctx))
 
 /*
 

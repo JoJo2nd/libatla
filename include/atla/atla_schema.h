@@ -35,7 +35,6 @@ be
 #undef ATLA_BEGIN
 #undef ATLA_END
 
-
 #if ATLA_DATA_DEF
 // "checking data def"
 
@@ -49,7 +48,7 @@ be
 #define ATLA_END(type)                                                         \
   }                                                                            \
   ;                                                                            \
-  extern atAtlaRuntimeTypeInfo_t* atla_##type##_reg() { return NULL; }
+  void atla_serialize_##type(atAtlaSerializer_t*, void*);
 
 #elif ATLA_DATA_WRITE
 
@@ -114,8 +113,12 @@ be
       ptr->field = (type*)atSerializeReadTypeLocation(                         \
         serializer, a, #type, atla_serialize_##type);                          \
     } else {                                                                   \
-      uint32_t id = atSerializeWritePendingType(                               \
-        serializer, ptr->field, #type, atla_serialize_##type, ptr->count);     \
+      uint32_t id = atSerializeWritePendingType(serializer,                    \
+                                                ptr->field,                    \
+                                                #type,                         \
+                                                atla_serialize_##type,         \
+                                                sizeof(type),                  \
+                                                ptr->count);                   \
       atSerializeWrite(serializer, &id, sizeof(id), 1);                        \
     }                                                                          \
   }
@@ -125,17 +128,22 @@ be
     ATLAI_RW_TYPES(dummy, type)                                                \
   }
 
-
 #define ATLA_BEGIN(type)                                                       \
   void atla_serialize_##type(atAtlaSerializer_t* serializer, void* vptr) {     \
-    static char const* type_name = #type;                                      \
+    extern char const* atla_##type##_typename();                               \
+    char const*        type_name = atla_##type##_typename();                   \
     struct type*       ptr = (struct type*)vptr;                               \
     serializer->depth++;
 #define ATLA_END(type)                                                         \
   if (serializer->depth == 1 && !serializer->reading)                          \
     atSerializeWriteProcessPending(serializer);                                \
   --serializer->depth;                                                         \
+  }                                                                            \
+  char const* atla_##type##_typename() { return #type; }                       \
+  void atla_##type##_reg(atAtlaContext_t* c) {                                 \
+    atContextRegisterType(c, atla_##type##_typename(), sizeof(type));          \
   }
+
 
 // Undef these as they aren't needed outside of this header.
 #undef ATLAI_RW_TYPED
