@@ -61,10 +61,11 @@ uint64_t ATLA_API atGetAtlaVersion() {
 void atSerializeWriteBegin(atAtlaSerializer_t* serializer,
                            atAtlaContext_t*    ctx,
                            char const*         usertag,
-                           atMemoryHandler_t*  mem,
                            atioaccess_t*       io,
                            uint32_t            version) {
-  serializer->mem = mem;
+  atMemoryHandler_t* mem = &ctx->mem;
+  serializer->ctx = ctx;
+  serializer->mem = &ctx->mem;
   serializer->io = io;
   serializer->reading = 0;
   serializer->version = version;
@@ -289,14 +290,15 @@ void* atSerializeReadTypeLocation(atAtlaSerializer_t*    serializer,
 
 void atSerializeReadBegin(atAtlaSerializer_t* serializer,
                           atAtlaContext_t*    ctx,
-                          atMemoryHandler_t*  mem,
                           atioaccess_t*       io,
                           uint32_t            version) {
   uint32_t string_table_len;
   char     atla_tag[5] = {0};
+  atMemoryHandler_t* mem = &ctx->mem;
   memset(serializer, 0, sizeof(atAtlaSerializer_t));
+  serializer->ctx = ctx;
   serializer->io = io;
-  serializer->mem = mem;
+  serializer->mem = &ctx->mem;
   serializer->reading = 1;
   serializer->version = version;
   io->readProc(serializer->userTag, ATLA_USER_TAG_LEN, io->user);
