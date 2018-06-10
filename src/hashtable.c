@@ -61,8 +61,10 @@ static uint32_t elem_hash(const ht_hash_table_t* hash_tbl, int ix) {
 
 // alloc buffer according to currently set capacity
 static void alloc(ht_hash_table_t* hash_tbl) {
-  hash_tbl->hashes = malloc(sizeof(uint32_t) * hash_tbl->capacity);
-  hash_tbl->buffer = malloc(sizeof(ht_elem_t) * hash_tbl->capacity);
+  hash_tbl->hashes =
+    (*hash_tbl->mralloc)(NULL, sizeof(uint32_t) * hash_tbl->capacity, hash_tbl->user);
+  hash_tbl->buffer =
+    (*hash_tbl->mralloc)(NULL, sizeof(ht_elem_t) * hash_tbl->capacity, hash_tbl->user);
 
   // flag all elems as hfree
   for (int i = 0; i < hash_tbl->capacity; ++i) {
@@ -89,8 +91,8 @@ static void rehash(ht_hash_table_t* hash_tbl) {
     }
   }
 
-  free(old_elems);
-  free(old_hashes);
+  (*hash_tbl->mfree)(old_elems, hash_tbl->user);
+  (*hash_tbl->mfree)(old_hashes, hash_tbl->user);
 }
 
 static void construct(ht_hash_table_t* hash_tbl,
@@ -169,13 +171,19 @@ static int lookup_index(ht_hash_table_t* hash_tbl, void const* key) {
 void ht_table_init(ht_hash_table_t* hash_tbl,
                    uint32_t (*in_hash_key)(void const*),
                    int (*in_compare_key)(void const*, void const*),
-                   void (*in_value_free)(void const* k, void* v)) {
+                   void (*in_value_free)(void const* k, void* v),
+                   void* (*in_mralloc)(void* ptr, size_t size, void* user),
+                   void (*in_mfree)(void* ptr, void* user),
+                   void* user) {
   //: buffer(nullptr), num_elems(0), capacity(INITIAL_SIZE)
   memset(hash_tbl, 0, sizeof(ht_hash_table_t));
   hash_tbl->hash_key = in_hash_key;
   hash_tbl->compare_key = in_compare_key;
   hash_tbl->value_free = in_value_free;
   hash_tbl->capacity = INITIAL_SIZE;
+  hash_tbl->mralloc = in_mralloc;
+  hash_tbl->mfree = in_mfree;
+  hash_tbl->user = user;
   alloc(hash_tbl);
 }
 

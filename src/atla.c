@@ -37,6 +37,8 @@ be
 #define ATLA_VERSION_MINOR (1)
 #define ATLA_VERSION_REV (1)
 
+#define at_itoptr(x) ((void*)((uintptr_t)(x)))
+
 atAtlaRuntimeTypeInfo_t atla_runtime_type_list;
 
 atAtlaRuntimeTypeInfo_t* atla_type_reg(atAtlaRuntimeTypeInfo_t* head,
@@ -47,13 +49,8 @@ atAtlaRuntimeTypeInfo_t* atla_type_reg(atAtlaRuntimeTypeInfo_t* head,
 }
 
 static int addr_comp(void const* a, void const* b) {
-  atAtlaTypeData_t const *c = a, *d = b;
-  return (uintptr_t)c->data - (uintptr_t)d->data;
-}
-
-static int id_com(void const* a, void const* b) {
-  atAtlaTypeData_t const *c = a, *d = b;
-  return c->id - d->id;
+  atAddressIDPair_t const *c = a, *d = b;
+  return (uintptr_t)c->address - (uintptr_t)d->address;
 }
 
 uint64_t ATLA_API atGetAtlaVersion() {
@@ -62,6 +59,7 @@ uint64_t ATLA_API atGetAtlaVersion() {
 }
 
 void atSerializeWriteBegin(atAtlaSerializer_t* serializer,
+                           atAtlaContext_t*    ctx,
                            char const*         usertag,
                            atMemoryHandler_t*  mem,
                            atioaccess_t*       io,
@@ -76,6 +74,8 @@ void atSerializeWriteBegin(atAtlaSerializer_t* serializer,
   serializer->objectListRes = 16;
   serializer->objectList =
     mem->alloc(sizeof(atAtlaTypeData_t) * serializer->objectListRes, mem->user);
+  serializer->idList = mem->alloc(
+    sizeof(atAddressIDPair_t) * serializer->objectListLen, mem->user);
   strncpy(serializer->userTag, usertag, ATLA_USER_TAG_LEN);
 }
 
@@ -91,45 +91,34 @@ void atSerializeWriteRoot(atAtlaSerializer_t*    serializer,
 void atSerializeWriteProcessPending(atAtlaSerializer_t* serializer) {
   // walk the list of objects awaiting writes, find first that hasn't be done
   // and do it
-  // continue until nothing is left to do...
-  int next_to_do = 0;
-  do {
-    next_to_do = serializer->objectListLen;
-    for (uint32_t i = 0; i < serializer->objectListLen; ++i) {
-      if ((serializer->objectList[i].flags & at_wflag_processed) == 0) {
-        // IDs are 1 based because zero is reserved for null pointers
-        if ((next_to_do + 1) > serializer->objectList[i].id) {
-          next_to_do = i;
-        }
-      }
-    }
-    if (next_to_do < serializer->objectListLen) {
-      serializer->objectList[next_to_do].foffset =
+  // continue until nothing is left to do...Note that more objects may be added
+  // mid iteration of this list
+  for (uint32_t i = 0; i < serializer->objectListLen; ++i) {
+    if ((serializer->objectList[i].flags & at_wflag_processed) == 0) {
+      // IDs are 1 based because zero is reserved for null pointers
+      serializer->objectList[i].foffset =
         serializer->io->tellProc(serializer->io->user) + sizeof(uint32_t);
-      serializer->objectList[next_to_do].flags |= at_wflag_processed;
-      if (!serializer->objectList[next_to_do].proc.ptr) {
+      serializer->objectList[i].flags |= at_wflag_processed;
+      if (!serializer->objectList[i].proc.ptr) {
         // atomic data type, count first then data
+        atSerializeWrite(
+          serializer, &serializer->objectList[i].count, sizeof(uint32_t), 1);
         atSerializeWrite(serializer,
-                         &serializer->objectList[next_to_do].count,
-                         sizeof(uint32_t),
-                         1);
-        atSerializeWrite(serializer,
-                         serializer->objectList[next_to_do].data,
-                         serializer->objectList[next_to_do].size,
-                         serializer->objectList[next_to_do].count);
+                         serializer->objectList[i].data,
+                         serializer->objectList[i].size,
+                         serializer->objectList[i].count);
       } else {
         // non-atomic data type
-        uint32_t n = serializer->objectList[next_to_do].count;
-        uint32_t s = serializer->objectList[next_to_do].size;
+        uint32_t n = serializer->objectList[i].count;
+        uint32_t s = serializer->objectList[i].size;
         atSerializeWrite(serializer, &n, sizeof(uint32_t), 1);
-        for (uint32_t i = 0; i < n; ++i) {
-          (*serializer->objectList[next_to_do].proc.ptr)(
-            serializer,
-            (uint8_t*)serializer->objectList[next_to_do].data + s * i);
+        for (uint32_t j = 0; j < n; ++j) {
+          (*serializer->objectList[i].proc.ptr)(
+            serializer, (uint8_t*)serializer->objectList[i].data + s * j);
         }
       }
     }
-  } while (next_to_do < serializer->objectListLen);
+  }
 }
 
 void atSerializeWriteFinalize(atAtlaSerializer_t* serializer) {
@@ -137,20 +126,17 @@ void atSerializeWriteFinalize(atAtlaSerializer_t* serializer) {
   // write the footer
   atioaccess_t* io = serializer->io;
   uint32_t      total_str_len = 0;
-  qsort(serializer->objectList,
-        serializer->objectListLen,
-        sizeof(atAtlaTypeData_t),
-        id_com);
   for (uint32_t i = 0, n = serializer->objectListLen; i < n; ++i) {
     serializer->objectList[i].data = NULL;
     char const* name_str = serializer->objectList[i].name.ptr;
-    if (name_str) {
+    if (name_str && !(serializer->objectList[i].flags & at_rflag_hasname)) {
       uint32_t offset = total_str_len;
       uint32_t name_str_len = strlen(name_str) + 1;
       io->writeProc(name_str, name_str_len, io->user);
       serializer->objectList[i].flags |= at_rflag_hasname;
       for (uint32_t j = i; j < n; ++j) {
         if (serializer->objectList[j].name.ptr == name_str) {
+          serializer->objectList[j].flags |= at_rflag_hasname;
           serializer->objectList[j].name.offset = total_str_len;
           serializer->objectList[j].proc.offset = 0;
         }
@@ -191,12 +177,12 @@ uint32_t atSerializeWritePendingBlob(atAtlaSerializer_t* serializer,
                                .id = serializer->nextID,
                                .foffset = 0,
                                .flags = 0};
-  atAtlaTypeData_t* found = bsearch(&new_blob,
-                                    serializer->objectList,
-                                    serializer->objectListLen,
-                                    sizeof(atMemoryHandler_t),
-                                    addr_comp);
-  if (found) return found->id;
+  atAddressIDPair_t* foundid = bsearch(&new_blob,
+                                       serializer->idList,
+                                       serializer->objectListLen,
+                                       sizeof(atAddressIDPair_t),
+                                       addr_comp);
+  if (foundid) return serializer->objectList[foundid->index].id;
 
   if (serializer->objectListLen + 1 >= serializer->objectListRes) {
     serializer->objectListRes *= 2;
@@ -204,12 +190,19 @@ uint32_t atSerializeWritePendingBlob(atAtlaSerializer_t* serializer,
       mem->ralloc(serializer->objectList,
                   sizeof(atAtlaTypeData_t) * serializer->objectListRes,
                   mem->user);
+    serializer->idList =
+      mem->ralloc(serializer->idList,
+                  sizeof(atAddressIDPair_t) * serializer->objectListRes,
+                  mem->user);
   }
-  serializer->objectList[serializer->objectListLen++] = new_blob;
+  serializer->objectList[serializer->objectListLen] = new_blob;
+  serializer->idList[serializer->objectListLen].index =
+    serializer->objectListLen;
+  serializer->idList[serializer->objectListLen++].address = data;
   ++serializer->nextID;
-  qsort(serializer->objectList,
+  qsort(serializer->idList,
         serializer->objectListLen,
-        sizeof(atAtlaTypeData_t),
+        sizeof(atAddressIDPair_t),
         addr_comp);
   return new_blob.id;
 }
@@ -218,6 +211,7 @@ uint32_t atSerializeWritePendingType(atAtlaSerializer_t*    serializer,
                                      void*                  data,
                                      char const*            name,
                                      atSerializeTypeProc_t* proc,
+                                     uint32_t               element_size,
                                      uint32_t               count) {
   // Big TODO: handle pointer offsets with already serialized memory blobs
   // (track with id plus offset??)
@@ -226,18 +220,18 @@ uint32_t atSerializeWritePendingType(atAtlaSerializer_t*    serializer,
   atMemoryHandler_t* mem = serializer->mem;
   atAtlaTypeData_t   new_blob = {.name.ptr = name,
                                .proc.ptr = proc,
-                               .size = 0,
+                               .size = element_size,
                                .count = count,
                                .data = data,
                                .id = serializer->nextID,
                                .foffset = 0,
                                .flags = 0};
-  atAtlaTypeData_t* found = bsearch(&new_blob,
-                                    serializer->objectList,
-                                    serializer->objectListLen,
-                                    sizeof(atMemoryHandler_t),
-                                    addr_comp);
-  if (found) return found->id;
+  atAddressIDPair_t* foundid = bsearch(&new_blob,
+                                       serializer->idList,
+                                       serializer->objectListLen,
+                                       sizeof(atAddressIDPair_t),
+                                       addr_comp);
+  if (foundid) return serializer->objectList[foundid->index].id;
 
   if (serializer->objectListLen + 1 >= serializer->objectListRes) {
     serializer->objectListRes *= 2;
@@ -245,12 +239,19 @@ uint32_t atSerializeWritePendingType(atAtlaSerializer_t*    serializer,
       mem->ralloc(serializer->objectList,
                   sizeof(atAtlaTypeData_t) * serializer->objectListRes,
                   mem->user);
+    serializer->idList =
+      mem->ralloc(serializer->idList,
+                  sizeof(atAddressIDPair_t) * serializer->objectListRes,
+                  mem->user);
   }
-  serializer->objectList[serializer->objectListLen++] = new_blob;
+  serializer->objectList[serializer->objectListLen] = new_blob;
+  serializer->idList[serializer->objectListLen].index =
+    serializer->objectListLen;
+  serializer->idList[serializer->objectListLen++].address = data;
   ++serializer->nextID;
-  qsort(serializer->objectList,
+  qsort(serializer->idList,
         serializer->objectListLen,
-        sizeof(atAtlaTypeData_t),
+        sizeof(atAddressIDPair_t),
         addr_comp);
   return new_blob.id;
 }
@@ -273,7 +274,7 @@ void atSerializeSkip(atAtlaSerializer_t* serializer,
 void* atSerializeReadGetBlobLocation(atAtlaSerializer_t* serializer,
                                      uint32_t            blob_id) {
   if (blob_id == 0) return NULL;
-  return serializer->objectList[blob_id-1].rmem.ptr;
+  return serializer->objectList[blob_id - 1].rmem.ptr;
 }
 
 
@@ -282,11 +283,12 @@ void* atSerializeReadTypeLocation(atAtlaSerializer_t*    serializer,
                                   char const*            name,
                                   atSerializeTypeProc_t* proc) {
   if (type_id == 0) return NULL;
-  serializer->objectList[type_id-1].proc.ptr = proc;
-  return serializer->objectList[type_id-1].rmem.ptr;
+  serializer->objectList[type_id - 1].proc.ptr = proc;
+  return serializer->objectList[type_id - 1].rmem.ptr;
 }
 
 void atSerializeReadBegin(atAtlaSerializer_t* serializer,
+                          atAtlaContext_t*    ctx,
                           atMemoryHandler_t*  mem,
                           atioaccess_t*       io,
                           uint32_t            version) {
@@ -368,4 +370,58 @@ void atSerializeReadFinalize(atAtlaSerializer_t* serializer) {
   mem->free(serializer->rStrings, mem->user);
   mem->free(serializer->objectList, mem->user);
   memset(serializer, 0, sizeof(atAtlaSerializer_t));
+}
+
+#define FVN_OFFSET_BASIS (0xcbf29ce484222325)
+#define FVN_PRIME (0x100000001b3)
+
+static uint32_t hash_key(void const* key) {
+  // murmur hash would be good here. Temp use FVN-1a
+  size_t hash = FVN_OFFSET_BASIS;
+  for (char const* c = (char const*)key; *c; ++c) {
+    hash = (hash ^ *c) * FVN_PRIME;
+  }
+  return (uint32_t)hash;
+}
+
+static int compare_key(void const* lhs, void const* rhs) {
+  return strcmp((char const*)lhs, (char const*)rhs);
+}
+
+static void value_free(void const* key, void* value) {}
+
+void ATLA_API atCreateAtlaContext(atAtlaContext_t*         ctx,
+                                  atMemoryHandler_t const* mem_handler) {
+  ctx->mem = *mem_handler;
+  ctx->typesCount = 0;
+  uint32_t block_count = 16;
+  ctx->types =
+    (*ctx->mem.alloc)(sizeof(atAtlaTInfo_t) * block_count, ctx->mem.user);
+  ht_table_init(&ctx->typeLUT,
+                hash_key,
+                compare_key,
+                value_free,
+                ctx->mem.ralloc,
+                ctx->mem.free,
+                ctx->mem.user);
+}
+
+void ATLA_API atContextRegisterType(atAtlaContext_t* ctx,
+                                    char const*      name,
+                                    size_t           size) {
+  uint32_t prev_types_count = ctx->typesCount;
+  ++ctx->typesCount;
+  if (((ctx->typesCount + 15) & ~15) > ((prev_types_count + 15) & ~15)) {
+    uint32_t block_count = ((ctx->typesCount + 15) & ~15);
+    (*ctx->mem.ralloc)(
+      ctx->types, sizeof(atAtlaTInfo_t) * block_count, ctx->mem.user);
+  }
+  ht_table_insert(&ctx->typeLUT, name, at_itoptr(prev_types_count));
+  ctx->types[prev_types_count].name = name;
+  ctx->types[prev_types_count].size = size;
+}
+
+void ATLA_API atDestroyAtlaContext(atAtlaContext_t* ctx) {
+  ht_table_destroy(&ctx->typeLUT);
+  (*ctx->mem.free)(ctx->types, ctx->mem.user);
 }
