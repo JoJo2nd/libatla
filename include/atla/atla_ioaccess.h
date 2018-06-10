@@ -59,7 +59,7 @@ typedef int64_t(ATLA_CALLBACK* atIOTellProc)(void* user);
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
 
-typedef struct atioaccess {
+typedef struct atioaccess_t {
   atIOReadProc  readProc;
   atIOWriteProc writeProc;
   atIOSeekProc  seekProc;

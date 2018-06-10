@@ -61,13 +61,13 @@ typedef struct atAtlaTInfo {
   size_t      size;
 } atAtlaTInfo_t;
 
-struct atAtlaContext {
+struct atAtlaContext_t {
   atMemoryHandler_t mem;
   ht_hash_table_t   typeLUT;
   atAtlaTInfo_t*    types;
   uint32_t          typesCount;
 };
-typedef struct atAtlaContext atAtlaContext_t;
+typedef struct atAtlaContext_t atAtlaContext_t;
 
 struct atAtlaTypeData {
   union {
