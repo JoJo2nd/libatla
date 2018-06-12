@@ -28,6 +28,7 @@ be
 
 #include "atla/atla.h"
 #include <string.h>
+#include <assert.h>
 
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
@@ -292,8 +293,8 @@ void atSerializeReadBegin(atAtlaSerializer_t* serializer,
                           atAtlaContext_t*    ctx,
                           atioaccess_t*       io,
                           uint32_t            version) {
-  uint32_t string_table_len;
-  char     atla_tag[5] = {0};
+  uint32_t           string_table_len;
+  char               atla_tag[5] = {0};
   atMemoryHandler_t* mem = &ctx->mem;
   memset(serializer, 0, sizeof(atAtlaSerializer_t));
   serializer->ctx = ctx;
@@ -325,6 +326,13 @@ void atSerializeReadBegin(atAtlaSerializer_t* serializer,
       serializer->objectList[i].flags & at_rflag_hasname
         ? serializer->rStrings + serializer->objectList[i].name.offset
         : NULL;
+    if (serializer->objectList[i].name.ptr) {
+      uintptr_t tidx = ((uintptr_t)ht_table_find(
+        &serializer->ctx->typeLUT, serializer->objectList[i].name.ptr));
+      assert(strcmp(serializer->ctx->types[tidx].name,
+                    serializer->objectList[i].name.ptr) == 0);
+      serializer->objectList[i].size = serializer->ctx->types[tidx].size;
+    }
   }
 }
 
