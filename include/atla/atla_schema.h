@@ -27,11 +27,13 @@ be
 *********************************************************************/
 
 #undef ATLA_ADD_TYPE_D
-#undef ATLA_ADD_TYPE_DPTR
 #undef ATLA_REM_TYPE_D
+#undef ATLA_ADD_TYPE_DPTR
+#undef ATLA_REM_TYPE_DPTR
 #undef ATLA_ADD_TYPE_S
-#undef ATLA_ADD_TYPE_SPTR
 #undef ATLA_REM_TYPE_S
+#undef ATLA_ADD_TYPE_SPTR
+#undef ATLA_REM_TYPE_SPTR
 #undef ATLA_BEGIN
 #undef ATLA_END
 
@@ -44,9 +46,9 @@ be
 #define ATLA_ADD_TYPE_S(ver, type, field) type field;
 #define ATLA_ADD_TYPE_SPTR(ver, type, field, coun) type* field;
 #define ATLA_REM_TYPE_S(vera, verr, type, field)
-#define ATLA_BEGIN(type) struct type {
+#define ATLA_BEGIN(type) typedef struct type {
 #define ATLA_END(type)                                                         \
-  }                                                                            \
+  } type                                                                            \
   ;                                                                            \
   void atla_serialize_##type(atAtlaSerializer_t*, void*);
 
@@ -67,7 +69,7 @@ be
 
 #define ATLAI_RW_TYPES(dptr, type)                                             \
   extern void atla_serialize_##type(atAtlaSerializer_t*, void*);               \
-  atla_serialize_##type(serializer, &(dptr));
+  atla_serialize_##type(serializer, &(dptr))
 
 #define ATLAI_SKIP_TYPED(type, count)                                          \
   if (serializer->reading) {                                                   \
@@ -102,7 +104,7 @@ be
 
 #define ATLA_ADD_TYPE_S(ver, type, field)                                      \
   if (serializer->version >= ver) {                                            \
-    ATLAI_RW_TYPES(ptr->(field), type)                                         \
+    ATLAI_RW_TYPES(ptr-> field , type);                                         \
   }
 #define ATLA_ADD_TYPE_SPTR(ver, type, field, count)                            \
   if (serializer->version >= ver) {                                            \

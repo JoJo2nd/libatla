@@ -77,7 +77,7 @@ void atSerializeWriteBegin(atAtlaSerializer_t* serializer,
   serializer->objectList =
     mem->alloc(sizeof(atAtlaTypeData_t) * serializer->objectListRes, mem->user);
   serializer->idList = mem->alloc(
-    sizeof(atAddressIDPair_t) * serializer->objectListLen, mem->user);
+    sizeof(atAddressIDPair_t) * serializer->objectListRes, mem->user);
   strncpy(serializer->userTag, usertag, ATLA_USER_TAG_LEN);
 }
 
@@ -423,7 +423,7 @@ void ATLA_API atContextRegisterType(atAtlaContext_t* ctx,
   ++ctx->typesCount;
   if (((ctx->typesCount + 15) & ~15) > ((prev_types_count + 15) & ~15)) {
     uint32_t block_count = ((ctx->typesCount + 15) & ~15);
-    (*ctx->mem.ralloc)(
+    ctx->types = (*ctx->mem.ralloc)(
       ctx->types, sizeof(atAtlaTInfo_t) * block_count, ctx->mem.user);
   }
   ht_table_insert(&ctx->typeLUT, name, at_itoptr(prev_types_count));
@@ -434,4 +434,40 @@ void ATLA_API atContextRegisterType(atAtlaContext_t* ctx,
 void ATLA_API atDestroyAtlaContext(atAtlaContext_t* ctx) {
   ht_table_destroy(&ctx->typeLUT);
   (*ctx->mem.free)(ctx->types, ctx->mem.user);
+}
+
+size_t atUtilCalcReadMemRequirements(atAtlaSerializer_t* ser) {
+  uint32_t total_mem = 0;
+  ht_hash_table_t* ht = &ser->ctx->typeLUT;
+  atAtlaTInfo_t* tlist = ser->ctx->types;
+  for (uint32_t i = 0, n = ser->objectListLen; i < n; ++i) {
+    char const* type_name = ser->objectList[i].name.ptr;
+    if (type_name == NULL) {
+      total_mem += ser->objectList[i].size * ser->objectList[i].count;
+    } else {
+      uintptr_t type_idx = (uintptr_t)ht_table_find(ht, type_name);
+      total_mem += tlist[type_idx].size * ser->objectList[i].count;
+    }
+  }
+  return total_mem;
+}
+
+int atUtilAssignReadMem(atAtlaSerializer_t* ser, void* mem, size_t len) {
+  uint8_t*    memp = (uint8_t*)(mem);
+  uint8_t* memend = memp + len;
+  ht_hash_table_t* ht = &ser->ctx->typeLUT;
+  atAtlaTInfo_t* tlist = ser->ctx->types;
+  for (uint32_t i = 0, n = ser->objectListLen; i < n; ++i) {
+    if (memp >= memend) return 0;
+    char const* type_name = ser->objectList[i].name.ptr;
+    if (type_name == NULL) {
+      ser->objectList[i].rmem.ptr = memp;
+      memp += ser->objectList[i].size * ser->objectList[i].count;
+    } else {
+      ser->objectList[i].rmem.ptr = memp;
+      uintptr_t type_idx = (uintptr_t)ht_table_find(ht, type_name);
+      memp += tlist[type_idx].size * ser->objectList[i].count;
+    }
+  }
+  return 1;
 }
