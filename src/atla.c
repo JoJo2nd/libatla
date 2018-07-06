@@ -51,7 +51,9 @@ atAtlaRuntimeTypeInfo_t* atla_type_reg(atAtlaRuntimeTypeInfo_t* head,
 
 static int addr_comp(void const* a, void const* b) {
   atAddressIDPair_t const *c = a, *d = b;
-  return (uintptr_t)c->address - (uintptr_t)d->address;
+  if ((uintptr_t)c->address < (uintptr_t)d->address) return -1;
+  if ((uintptr_t)c->address > (uintptr_t)d->address) return 1;
+  return 0;
 }
 
 uint64_t ATLA_API atGetAtlaVersion() {
@@ -133,7 +135,7 @@ void atSerializeWriteFinalize(atAtlaSerializer_t* serializer) {
     char const* name_str = serializer->objectList[i].name.ptr;
     if (name_str && !(serializer->objectList[i].flags & at_rflag_hasname)) {
       uint32_t offset = total_str_len;
-      uint32_t name_str_len = strlen(name_str) + 1;
+      uint32_t name_str_len = (uint32_t)(strlen(name_str) + 1);
       io->writeProc(name_str, name_str_len, io->user);
       serializer->objectList[i].flags |= at_rflag_hasname;
       for (uint32_t j = i; j < n; ++j) {
@@ -305,14 +307,14 @@ void atSerializeReadBegin(atAtlaSerializer_t* serializer,
   io->readProc(serializer->userTag, ATLA_USER_TAG_LEN, io->user);
   io->readProc(atla_tag, 4, io->user);
   io->readProc(&serializer->version, sizeof(serializer->version), io->user);
-  io->seekProc(-sizeof(uint32_t) * 2, eSeekOffset_End, io->user);
+  io->seekProc(-((int64_t)sizeof(uint32_t) * 2), eSeekOffset_End, io->user);
   io->readProc(&serializer->objectListLen, sizeof(uint32_t), io->user);
   io->readProc(&string_table_len, sizeof(uint32_t), io->user);
   serializer->objectList =
     mem->alloc(sizeof(atAtlaTypeData_t) * serializer->objectListLen, mem->user);
   serializer->objectListRes = serializer->objectListLen;
   serializer->rStrings = mem->alloc(string_table_len, mem->user);
-  io->seekProc(-(serializer->objectListLen * sizeof(atAtlaTypeData_t) +
+  io->seekProc(-(int64_t)(serializer->objectListLen * sizeof(atAtlaTypeData_t) +
                  string_table_len + sizeof(uint32_t) * 2),
                eSeekOffset_Current,
                io->user);
@@ -329,9 +331,11 @@ void atSerializeReadBegin(atAtlaSerializer_t* serializer,
     if (serializer->objectList[i].name.ptr) {
       uintptr_t tidx = ((uintptr_t)ht_table_find(
         &serializer->ctx->typeLUT, serializer->objectList[i].name.ptr));
-      assert(strcmp(serializer->ctx->types[tidx].name,
-                    serializer->objectList[i].name.ptr) == 0);
-      serializer->objectList[i].size = serializer->ctx->types[tidx].size;
+      atla_assert(strcmp(serializer->ctx->types[tidx].name,
+                    serializer->objectList[i].name.ptr) == 0, "Name mismatch");
+      atla_assert((uint32_t)serializer->ctx->types[tidx].size == serializer->ctx->types[tidx].size,
+        "int overflow");
+      serializer->objectList[i].size = (uint32_t)serializer->ctx->types[tidx].size;
     }
   }
 }
@@ -362,7 +366,7 @@ void atSerializeReadRoot(atAtlaSerializer_t*    serializer,
         if (tdata->proc.ptr) {
           io->seekProc(tdata->foffset, eSeekOffset_Begin, io->user);
           for (uint32_t j = 0, m = tdata->count; j < m; ++j) {
-            (*tdata->proc.ptr)(serializer, tdata->rmem.ptr + (tdata->size * j));
+            (*tdata->proc.ptr)(serializer, (uint8_t*)tdata->rmem.ptr + (tdata->size * j));
           }
         } else {
           work_to_do = 1;
@@ -437,7 +441,7 @@ void ATLA_API atDestroyAtlaContext(atAtlaContext_t* ctx) {
 }
 
 size_t atUtilCalcReadMemRequirements(atAtlaSerializer_t* ser) {
-  uint32_t total_mem = 0;
+  size_t total_mem = 0;
   ht_hash_table_t* ht = &ser->ctx->typeLUT;
   atAtlaTInfo_t* tlist = ser->ctx->types;
   for (uint32_t i = 0, n = ser->objectListLen; i < n; ++i) {

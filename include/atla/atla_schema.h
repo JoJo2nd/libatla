@@ -26,6 +26,8 @@ be
 
 *********************************************************************/
 
+#include <memory.h> // for memset
+
 #undef ATLA_ADD_TYPE_D
 #undef ATLA_REM_TYPE_D
 #undef ATLA_ADD_TYPE_DPTR
@@ -135,6 +137,7 @@ be
     extern char const* atla_##type##_typename();                               \
     char const*        type_name = atla_##type##_typename();                   \
     struct type*       ptr = (struct type*)vptr;                               \
+    if (serializer->reading) memset(ptr, 0, sizeof(type));                     \
     serializer->depth++;
 #define ATLA_END(type)                                                         \
   if (serializer->depth == 1 && !serializer->reading)                          \
