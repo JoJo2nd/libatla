@@ -265,14 +265,14 @@ void atSerializeRead(atAtlaSerializer_t* serializer,
                      uint32_t            element_size,
                      uint32_t            element_count) {
   atioaccess_t* io = serializer->io;
-  io->readProc(dest, element_size, io->user);
+  io->readProc(dest, element_size*element_count, io->user);
 }
 
 void atSerializeSkip(atAtlaSerializer_t* serializer,
                      uint32_t            element_size,
                      uint32_t            element_count) {
   atioaccess_t* io = serializer->io;
-  io->seekProc(element_size, eSeekOffset_Current, io->user);
+  io->seekProc(element_size*element_count, eSeekOffset_Current, io->user);
 }
 
 void* atSerializeReadGetBlobLocation(atAtlaSerializer_t* serializer,

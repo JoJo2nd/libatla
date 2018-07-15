@@ -34,6 +34,7 @@ be
 #undef ATLA_REM_TYPE_DPTR
 #undef ATLA_ADD_TYPE_S
 #undef ATLA_REM_TYPE_S
+#undef ATLA_ADD_TYPE_A
 #undef ATLA_ADD_TYPE_SPTR
 #undef ATLA_REM_TYPE_SPTR
 #undef ATLA_BEGIN
@@ -46,6 +47,8 @@ be
 #define ATLA_ADD_TYPE_DPTR(ver, type, field, count) type* field;
 #define ATLA_REM_TYPE_D(vera, verr, type, field)
 #define ATLA_ADD_TYPE_S(ver, type, field) type field;
+#define ATLA_ADD_TYPE_A(ver, type, field, size) type field [ size ];
+#define ATLA_REM_TYPE_A(vera, verr, type, field, size)
 #define ATLA_ADD_TYPE_SPTR(ver, type, field, coun) type* field;
 #define ATLA_REM_TYPE_S(vera, verr, type, field)
 #define ATLA_BEGIN(type) typedef struct type {
@@ -130,6 +133,15 @@ be
   if (serializer->version >= (vera) && serializer->version < (verr)) {         \
     type dummy;                                                                \
     ATLAI_RW_TYPES(dummy, type)                                                \
+  }
+
+#define ATLA_ADD_TYPE_A(ver, type, field, size)                                \
+  if (serializer->version >= ver) {                                            \
+    if (serializer->reading) {                                                 \
+      atSerializeRead(serializer, ptr->field, sizeof(type), size);          \
+    } else {                                                                   \
+      atSerializeWrite(serializer, ptr->field, sizeof(type), size);         \
+    }                                                                          \
   }
 
 #define ATLA_BEGIN(type)                                                       \
