@@ -132,7 +132,7 @@ be
 #define ATLA_REM_TYPE_S(vera, verr, type, field)                               \
   if (serializer->version >= (vera) && serializer->version < (verr)) {         \
     type dummy;                                                                \
-    ATLAI_RW_TYPES(dummy, type)                                                \
+    ATLAI_RW_TYPES(dummy, type);                                               \
   }
 
 #define ATLA_ADD_TYPE_A(ver, type, field, size)                                \
