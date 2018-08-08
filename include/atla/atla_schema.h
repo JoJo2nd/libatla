@@ -104,7 +104,9 @@ be
 
 #define ATLA_REM_TYPE_D(vera, verr, type, field)                               \
   if (serializer->version >= (vera) && serializer->version < (verr)) {         \
-    ATLAI_SKIP_TYPED(type, 1)                                                  \
+    if (serializer->reading) {                                                 \
+      atSerializeSkip(serializer, sizeof(type), 1);                      \
+    }                                                                          \
   }
 
 #define ATLA_ADD_TYPE_S(ver, type, field)                                      \
