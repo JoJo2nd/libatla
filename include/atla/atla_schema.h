@@ -149,7 +149,7 @@ be
 #define ATLA_BEGIN(type)                                                       \
   void atla_serialize_##type(atAtlaSerializer_t* serializer, void* vptr) {     \
     extern char const* atla_##type##_typename();                               \
-    char const*        type_name = atla_##type##_typename();                   \
+    /*char const*        type_name = atla_##type##_typename();*/               \
     struct type*       ptr = (struct type*)vptr;                               \
     if (serializer->reading) memset(ptr, 0, sizeof(type));                     \
     serializer->depth++;

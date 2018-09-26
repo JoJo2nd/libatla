@@ -134,7 +134,7 @@ void atSerializeWriteFinalize(atAtlaSerializer_t* serializer) {
     serializer->objectList[i].data = NULL;
     char const* name_str = serializer->objectList[i].name.ptr;
     if (name_str && !(serializer->objectList[i].flags & at_rflag_hasname)) {
-      uint32_t offset = total_str_len;
+      //uint32_t offset = total_str_len;
       uint32_t name_str_len = (uint32_t)(strlen(name_str) + 1);
       io->writeProc(name_str, name_str_len, io->user);
       serializer->objectList[i].flags |= at_rflag_hasname;
