@@ -61,6 +61,45 @@ uint64_t ATLA_API atGetAtlaVersion() {
           ((atuint64)(ATLA_VERSION_MAJOR & 0xFFFF) << 32) | ATLA_VERSION_REV);
 }
 
+static void* atla_malloc(size_t size, void* user) {
+  return malloc(size);
+}
+static void* atla_realloc(void* ptr, size_t size, void* user) {
+  return realloc(ptr, size);
+}
+static void atla_free(void* ptr, void* user) {
+  free(ptr);
+}
+
+static void atla_read(void* buffer, uint32_t size, void* user) {
+  FILE* f = user;
+  fread(buffer, size, 1, f);
+}
+static void atla_write(void const* src, uint32_t size, void* user) {
+  FILE* f = user;
+  fwrite(src, size, 1, f);
+}
+static uint32_t atla_seek(int64_t offset, atSeekOffset from, void* user) {
+  FILE* f = user;
+  return fseek(f, (long)offset, from);
+}
+static int64_t atla_tell(void* user) {
+  FILE* f = user;
+  return (int64_t)ftell(f);
+}
+
+void atCreateFileIOContext(atioaccess_t* io, char const* path, char const* access) {
+  io->readProc = atla_read;
+  io->writeProc = atla_write;
+  io->seekProc = atla_seek;
+  io->tellProc = atla_tell;
+  io->user = fopen(path, access);
+}
+
+void atDestroyFileIOContext(atioaccess_t* io) {
+  fclose(io->user);
+}
+
 void atSerializeWriteBegin(atAtlaSerializer_t* serializer,
                            atAtlaContext_t*    ctx,
                            char const*         usertag,
@@ -406,7 +445,14 @@ static void value_free(void const* key, void* value) {}
 
 void ATLA_API atCreateAtlaContext(atAtlaContext_t*         ctx,
                                   atMemoryHandler_t const* mem_handler) {
-  ctx->mem = *mem_handler;
+  if (mem_handler) {
+    ctx->mem = *mem_handler;
+  } else {
+    ctx->mem.alloc = atla_malloc;
+    ctx->mem.ralloc = atla_realloc;
+    ctx->mem.free = atla_free;
+    ctx->mem.user = NULL;
+  }
   ctx->typesCount = 0;
   uint32_t block_count = 16;
   ctx->types =

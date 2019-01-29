@@ -196,6 +196,10 @@ void ATLA_API atContextRegisterType(atAtlaContext_t* ctx,
 size_t atUtilCalcReadMemRequirements(atAtlaSerializer_t* ser);
 int atUtilAssignReadMem(atAtlaSerializer_t* ser, void* mem, size_t len);
 
+void atCreateFileIOContext(atioaccess_t* io, char const* path, char const* access);
+
+void atDestroyFileIOContext(atioaccess_t* io);
+
 /*
 
         Atla -
