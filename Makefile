@@ -10,7 +10,7 @@ INCLUDES = -I ./include
 
 atla.a: $(obj)
 	@echo Linking $@
-	@$(LDLIB) /OUT:$@ $(LDLIBFLAGS) $^
+	$(LDLIB) /OUT:$@ $(LDLIBFLAGS) $^
 
 all: atla.a
 
@@ -19,12 +19,12 @@ clean:
 
 .c.o:
 	@echo $<
-	@$(CC) -c $(CFLAGS) $(INCLUDES) $(DEFINES) $< -o $@
+	$(CC) -c $(CFLAGS) $(INCLUDES) $(DEFINES) $< -o $@
 
 -include $(dep)   # include all dep files in the makefile
 
 # rule to generate a dep file by using the C preprocessor
 # (see man cpp for details on the -MM and -MT options)
 %.d: %.c
-	@$(CC) $(CFLAGS) $(INCLUDES) $(DEFINES) $< -MM -MT $(@:.d=.o) >$@
+	$(CC) $(CFLAGS) $(INCLUDES) $(DEFINES) $< -MM -MT $(@:.d=.o) >$@
 
