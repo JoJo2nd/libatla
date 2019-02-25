@@ -50,6 +50,7 @@ be
 #define ATLA_ADD_TYPE_A(ver, type, field, size) type field [ size ];
 #define ATLA_REM_TYPE_A(vera, verr, type, field, size)
 #define ATLA_ADD_TYPE_SPTR(ver, type, field, coun) type* field;
+#define ATLA_REM_TYPE_SPTR(vera, vare, type, field, coun)
 #define ATLA_REM_TYPE_S(vera, verr, type, field)
 #define ATLA_BEGIN(type) typedef struct type {
 #define ATLA_END(type)                                                         \
@@ -131,6 +132,16 @@ be
       atSerializeWrite(serializer, &id, sizeof(id), 1);                        \
     }                                                                          \
   }
+
+#define ATLA_REM_TYPE_SPTR(ver, verr, type, field, count) \
+   if (serializer->version >= ver && serializer->version < verr) {                                            \
+    if (serializer->reading) {                                                 \
+      uint32_t a;                                                              \
+      atSerializeRead(serializer, &a, sizeof(a), 1);                           \
+      /*ptr->field = (type*)atSerializeReadGetBlobLocation(serializer, a);*/      \
+    }                                                                         \
+  } 
+
 #define ATLA_REM_TYPE_S(vera, verr, type, field)                               \
   if (serializer->version >= (vera) && serializer->version < (verr)) {         \
     type dummy;                                                                \
