@@ -38,6 +38,8 @@ ALL_T= $(LUA_A) $(LUA_T) $(LUAC_T)
 ALL_A= $(LUA_A)
 
 .PHONY: clean all
+	
+all: atla.a $(ATLALC)
 
 $(ATLALC): $(altalc_obj) $(LUA_A) ../getopt_port/getopt.a ../minfs/minfs.a
 	@echo $(mkfile_path) Linking $@
@@ -51,7 +53,6 @@ $(LUA_A): $(BASE_O)
 	@echo Linking $@
 	$(LDLIB) /OUT:$@ $(LDLIBFLAGS) $^
 
-all: atla.a
 
 clean:
 	@$(RM) $(subst /,$(PSEP),src/*.o) && $(RM) $(subst /,$(PSEP),src/*.d) && $(RM) *.a
