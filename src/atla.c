@@ -28,6 +28,7 @@ be
 
 #include "atla/atla.h"
 #include <string.h>
+#include <assert.h>
 
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
@@ -50,12 +51,53 @@ atAtlaRuntimeTypeInfo_t* atla_type_reg(atAtlaRuntimeTypeInfo_t* head,
 
 static int addr_comp(void const* a, void const* b) {
   atAddressIDPair_t const *c = a, *d = b;
-  return (uintptr_t)c->address - (uintptr_t)d->address;
+  if ((uintptr_t)c->address < (uintptr_t)d->address) return -1;
+  if ((uintptr_t)c->address > (uintptr_t)d->address) return 1;
+  return 0;
 }
 
 uint64_t ATLA_API atGetAtlaVersion() {
   return (((atuint64)(ATLA_VERSION_MAJOR & 0xFFFF) << 48) |
           ((atuint64)(ATLA_VERSION_MAJOR & 0xFFFF) << 32) | ATLA_VERSION_REV);
+}
+
+static void* atla_malloc(size_t size, void* user) {
+  return malloc(size);
+}
+static void* atla_realloc(void* ptr, size_t size, void* user) {
+  return realloc(ptr, size);
+}
+static void atla_free(void* ptr, void* user) {
+  free(ptr);
+}
+
+static void atla_read(void* buffer, uint32_t size, void* user) {
+  FILE* f = user;
+  fread(buffer, size, 1, f);
+}
+static void atla_write(void const* src, uint32_t size, void* user) {
+  FILE* f = user;
+  fwrite(src, size, 1, f);
+}
+static uint32_t atla_seek(int64_t offset, atSeekOffset from, void* user) {
+  FILE* f = user;
+  return fseek(f, (long)offset, from);
+}
+static int64_t atla_tell(void* user) {
+  FILE* f = user;
+  return (int64_t)ftell(f);
+}
+
+void atCreateFileIOContext(atioaccess_t* io, char const* path, char const* access) {
+  io->readProc = atla_read;
+  io->writeProc = atla_write;
+  io->seekProc = atla_seek;
+  io->tellProc = atla_tell;
+  io->user = fopen(path, access);
+}
+
+void atDestroyFileIOContext(atioaccess_t* io) {
+  fclose(io->user);
 }
 
 void atSerializeWriteBegin(atAtlaSerializer_t* serializer,
@@ -76,7 +118,7 @@ void atSerializeWriteBegin(atAtlaSerializer_t* serializer,
   serializer->objectList =
     mem->alloc(sizeof(atAtlaTypeData_t) * serializer->objectListRes, mem->user);
   serializer->idList = mem->alloc(
-    sizeof(atAddressIDPair_t) * serializer->objectListLen, mem->user);
+    sizeof(atAddressIDPair_t) * serializer->objectListRes, mem->user);
   strncpy(serializer->userTag, usertag, ATLA_USER_TAG_LEN);
 }
 
@@ -131,8 +173,8 @@ void atSerializeWriteFinalize(atAtlaSerializer_t* serializer) {
     serializer->objectList[i].data = NULL;
     char const* name_str = serializer->objectList[i].name.ptr;
     if (name_str && !(serializer->objectList[i].flags & at_rflag_hasname)) {
-      uint32_t offset = total_str_len;
-      uint32_t name_str_len = strlen(name_str) + 1;
+      //uint32_t offset = total_str_len;
+      uint32_t name_str_len = (uint32_t)(strlen(name_str) + 1);
       io->writeProc(name_str, name_str_len, io->user);
       serializer->objectList[i].flags |= at_rflag_hasname;
       for (uint32_t j = i; j < n; ++j) {
@@ -262,14 +304,14 @@ void atSerializeRead(atAtlaSerializer_t* serializer,
                      uint32_t            element_size,
                      uint32_t            element_count) {
   atioaccess_t* io = serializer->io;
-  io->readProc(dest, element_size, io->user);
+  io->readProc(dest, element_size*element_count, io->user);
 }
 
 void atSerializeSkip(atAtlaSerializer_t* serializer,
                      uint32_t            element_size,
                      uint32_t            element_count) {
   atioaccess_t* io = serializer->io;
-  io->seekProc(element_size, eSeekOffset_Current, io->user);
+  io->seekProc(element_size*element_count, eSeekOffset_Current, io->user);
 }
 
 void* atSerializeReadGetBlobLocation(atAtlaSerializer_t* serializer,
@@ -292,8 +334,8 @@ void atSerializeReadBegin(atAtlaSerializer_t* serializer,
                           atAtlaContext_t*    ctx,
                           atioaccess_t*       io,
                           uint32_t            version) {
-  uint32_t string_table_len;
-  char     atla_tag[5] = {0};
+  uint32_t           string_table_len;
+  char               atla_tag[5] = {0};
   atMemoryHandler_t* mem = &ctx->mem;
   memset(serializer, 0, sizeof(atAtlaSerializer_t));
   serializer->ctx = ctx;
@@ -304,14 +346,14 @@ void atSerializeReadBegin(atAtlaSerializer_t* serializer,
   io->readProc(serializer->userTag, ATLA_USER_TAG_LEN, io->user);
   io->readProc(atla_tag, 4, io->user);
   io->readProc(&serializer->version, sizeof(serializer->version), io->user);
-  io->seekProc(-sizeof(uint32_t) * 2, eSeekOffset_End, io->user);
+  io->seekProc(-((int64_t)sizeof(uint32_t) * 2), eSeekOffset_End, io->user);
   io->readProc(&serializer->objectListLen, sizeof(uint32_t), io->user);
   io->readProc(&string_table_len, sizeof(uint32_t), io->user);
   serializer->objectList =
     mem->alloc(sizeof(atAtlaTypeData_t) * serializer->objectListLen, mem->user);
   serializer->objectListRes = serializer->objectListLen;
   serializer->rStrings = mem->alloc(string_table_len, mem->user);
-  io->seekProc(-(serializer->objectListLen * sizeof(atAtlaTypeData_t) +
+  io->seekProc(-(int64_t)(serializer->objectListLen * sizeof(atAtlaTypeData_t) +
                  string_table_len + sizeof(uint32_t) * 2),
                eSeekOffset_Current,
                io->user);
@@ -325,6 +367,15 @@ void atSerializeReadBegin(atAtlaSerializer_t* serializer,
       serializer->objectList[i].flags & at_rflag_hasname
         ? serializer->rStrings + serializer->objectList[i].name.offset
         : NULL;
+    if (serializer->objectList[i].name.ptr) {
+      uintptr_t tidx = ((uintptr_t)ht_table_find(
+        &serializer->ctx->typeLUT, serializer->objectList[i].name.ptr));
+      atla_assert(strcmp(serializer->ctx->types[tidx].name,
+                    serializer->objectList[i].name.ptr) == 0, "Name mismatch");
+      atla_assert((uint32_t)serializer->ctx->types[tidx].size == serializer->ctx->types[tidx].size,
+        "int overflow");
+      serializer->objectList[i].size = (uint32_t)serializer->ctx->types[tidx].size;
+    }
   }
 }
 
@@ -354,7 +405,7 @@ void atSerializeReadRoot(atAtlaSerializer_t*    serializer,
         if (tdata->proc.ptr) {
           io->seekProc(tdata->foffset, eSeekOffset_Begin, io->user);
           for (uint32_t j = 0, m = tdata->count; j < m; ++j) {
-            (*tdata->proc.ptr)(serializer, tdata->rmem.ptr + (tdata->size * j));
+            (*tdata->proc.ptr)(serializer, (uint8_t*)tdata->rmem.ptr + (tdata->size * j));
           }
         } else {
           work_to_do = 1;
@@ -394,7 +445,14 @@ static void value_free(void const* key, void* value) {}
 
 void ATLA_API atCreateAtlaContext(atAtlaContext_t*         ctx,
                                   atMemoryHandler_t const* mem_handler) {
-  ctx->mem = *mem_handler;
+  if (mem_handler) {
+    ctx->mem = *mem_handler;
+  } else {
+    ctx->mem.alloc = atla_malloc;
+    ctx->mem.ralloc = atla_realloc;
+    ctx->mem.free = atla_free;
+    ctx->mem.user = NULL;
+  }
   ctx->typesCount = 0;
   uint32_t block_count = 16;
   ctx->types =
@@ -415,7 +473,7 @@ void ATLA_API atContextRegisterType(atAtlaContext_t* ctx,
   ++ctx->typesCount;
   if (((ctx->typesCount + 15) & ~15) > ((prev_types_count + 15) & ~15)) {
     uint32_t block_count = ((ctx->typesCount + 15) & ~15);
-    (*ctx->mem.ralloc)(
+    ctx->types = (*ctx->mem.ralloc)(
       ctx->types, sizeof(atAtlaTInfo_t) * block_count, ctx->mem.user);
   }
   ht_table_insert(&ctx->typeLUT, name, at_itoptr(prev_types_count));
@@ -426,4 +484,40 @@ void ATLA_API atContextRegisterType(atAtlaContext_t* ctx,
 void ATLA_API atDestroyAtlaContext(atAtlaContext_t* ctx) {
   ht_table_destroy(&ctx->typeLUT);
   (*ctx->mem.free)(ctx->types, ctx->mem.user);
+}
+
+size_t atUtilCalcReadMemRequirements(atAtlaSerializer_t* ser) {
+  size_t total_mem = 0;
+  ht_hash_table_t* ht = &ser->ctx->typeLUT;
+  atAtlaTInfo_t* tlist = ser->ctx->types;
+  for (uint32_t i = 0, n = ser->objectListLen; i < n; ++i) {
+    char const* type_name = ser->objectList[i].name.ptr;
+    if (type_name == NULL) {
+      total_mem += ser->objectList[i].size * ser->objectList[i].count;
+    } else {
+      uintptr_t type_idx = (uintptr_t)ht_table_find(ht, type_name);
+      total_mem += tlist[type_idx].size * ser->objectList[i].count;
+    }
+  }
+  return total_mem;
+}
+
+int atUtilAssignReadMem(atAtlaSerializer_t* ser, void* mem, size_t len) {
+  uint8_t*    memp = (uint8_t*)(mem);
+  uint8_t* memend = memp + len;
+  ht_hash_table_t* ht = &ser->ctx->typeLUT;
+  atAtlaTInfo_t* tlist = ser->ctx->types;
+  for (uint32_t i = 0, n = ser->objectListLen; i < n; ++i) {
+    if (memp >= memend) return 0;
+    char const* type_name = ser->objectList[i].name.ptr;
+    if (type_name == NULL) {
+      ser->objectList[i].rmem.ptr = memp;
+      memp += ser->objectList[i].size * ser->objectList[i].count;
+    } else {
+      ser->objectList[i].rmem.ptr = memp;
+      uintptr_t type_idx = (uintptr_t)ht_table_find(ht, type_name);
+      memp += tlist[type_idx].size * ser->objectList[i].count;
+    }
+  }
+  return 1;
 }

@@ -41,7 +41,7 @@ extern "C" {
 #endif
 
 #ifdef ATLA_DEBUG
-#define ATAL_USE_ASSERT
+#define ATLA_USE_ASSERT (1)
 #endif
 
 #define ATLA_CALLBACK __cdecl
@@ -50,10 +50,10 @@ extern "C" {
 //#define ATLA_USE_ASSERT (0)
 
 #if !defined(ATLA_USE_ASSERT)
-#define ATLA_USE_ASSERT (1)
+#define ATLA_USE_ASSERT (0)
 #endif
 
-#if ATAL_USE_ASSERT
+#if ATLA_USE_ASSERT
 # define atla_assert(cond, msg, ...)
 #else
 # define atla_assert(cond, msg, ...)

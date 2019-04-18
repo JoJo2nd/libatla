@@ -50,7 +50,7 @@ typedef void(ATLA_CALLBACK* atIOReadProc)(void*    pBuffer,
 typedef void(ATLA_CALLBACK* atIOWriteProc)(void const* pBuffer,
                                            uint32_t    size,
                                            void*       user);
-typedef uint32_t(ATLA_CALLBACK* atIOSeekProc)(size_t     offset,
+typedef uint32_t(ATLA_CALLBACK* atIOSeekProc)(int64_t     offset,
                                               atSeekOffset from,
                                               void*        user);
 typedef int64_t(ATLA_CALLBACK* atIOTellProc)(void* user);

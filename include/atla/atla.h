@@ -193,41 +193,12 @@ void ATLA_API atContextRegisterType(atAtlaContext_t* ctx,
   void atla_##type##_reg (atAtlaContext_t* c);                    \
   atla_##type##_reg ((ctx))
 
-inline size_t atUtilCalcReadMemRequirements(atAtlaSerializer_t* ser) {
-  uint32_t total_mem = 0;
-  ht_hash_table_t* ht = &ser->ctx->typeLUT;
-  atAtlaTInfo_t* tlist = ser->ctx->types;
-  for (uint32_t i = 0, n = ser->objectListLen; i < n; ++i) {
-    char const* type_name = ser->objectList[i].name.ptr;
-    if (type_name == NULL) {
-      total_mem += ser->objectList[i].size * ser->objectList[i].count;
-    } else {
-      uintptr_t type_idx = (uintptr_t)ht_table_find(ht, type_name);
-      total_mem += tlist[type_idx].size * ser->objectList[i].count;
-    }
-  }
-  return total_mem;
-}
+size_t atUtilCalcReadMemRequirements(atAtlaSerializer_t* ser);
+int atUtilAssignReadMem(atAtlaSerializer_t* ser, void* mem, size_t len);
 
-inline int atUtilAssignReadMem(atAtlaSerializer_t* ser, void* mem, size_t len) {
-  uint8_t*    memp = (uint8_t*)(mem);
-  uint8_t* memend = memp + len;
-  ht_hash_table_t* ht = &ser->ctx->typeLUT;
-  atAtlaTInfo_t* tlist = ser->ctx->types;
-  for (uint32_t i = 0, n = ser->objectListLen; i < n; ++i) {
-    if (memp >= memend) return 0;
-    char const* type_name = ser->objectList[i].name.ptr;
-    if (type_name == NULL) {
-      ser->objectList[i].rmem.ptr = memp;
-      memp += ser->objectList[i].size * ser->objectList[i].count;
-    } else {
-      ser->objectList[i].rmem.ptr = memp;
-      uintptr_t type_idx = (uintptr_t)ht_table_find(ht, type_name);
-      memp += tlist[type_idx].size * ser->objectList[i].count;
-    }
-  }
-  return 1;
-}
+void atCreateFileIOContext(atioaccess_t* io, char const* path, char const* access);
+
+void atDestroyFileIOContext(atioaccess_t* io);
 
 /*
 

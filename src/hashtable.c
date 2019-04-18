@@ -214,6 +214,7 @@ void* ht_table_find(ht_hash_table_t* hash_tbl, void const* key) {
 
 int ht_table_erase(ht_hash_table_t* hash_tbl, void const* key) {
   const uint32_t hash = hash_key(hash_tbl, key);
+  (void)hash;
   const int      ix = lookup_index(hash_tbl, key);
 
   if (ix == -1) return 0;
