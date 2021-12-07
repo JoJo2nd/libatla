@@ -1,23 +1,21 @@
-# Shared
-include ../environ.mk
 
-src = src/atla.c src/hashtable.c
+
+QUIET?=@
+ATLA_SMD_UTIL_DIR?=../smd
+ATLALC?= atlac
+PSEP?=/
+
+src = $(ATLA_SRC_PREFIX)src/atla.c $(ATLA_SRC_PREFIX)src/hashtable.c
 obj = $(src:.c=.o)
 dep = $(obj:.o=.d)  # one dependency file for each source
 
-altalc_src = src/atlalc/atlalc.c
+altalc_src = $(ATLA_SRC_PREFIX)src/atlalc/atlalc.c
 altalc_obj = $(altalc_src:.c=.o)
 altalc_dep = $(altalc_obj:.o=.d)  # one dependency file for each source
 
-INCLUDES = -I .. -I ./include -I ../minfs/include -I external/lua-5.2.4/src
+INCLUDES = -I $(ATLA_SRC_PREFIX)include -I $(ATLA_SMD_UTIL_DIR) -I $(ATLA_SRC_PREFIX)external/lua-5.2.4/src
 
-LUAPRFIX = external/lua-5.2.4/src/
-
-ifeq ($(OS),Windows_NT)
-	ATLALC = atlalc.exe
-else
-	ATLALC = atlalc
-endif
+LUAPRFIX = $(ATLA_SRC_PREFIX)external/lua-5.2.4/src/
 
 LUA_A=	$(LUAPRFIX)liblua.a
 CORE_O=	$(LUAPRFIX)lapi.o $(LUAPRFIX)lcode.o $(LUAPRFIX)lctype.o $(LUAPRFIX)ldebug.o $(LUAPRFIX)ldo.o $(LUAPRFIX)ldump.o $(LUAPRFIX)lfunc.o $(LUAPRFIX)lgc.o $(LUAPRFIX)llex.o \
@@ -37,111 +35,51 @@ ALL_O= $(BASE_O) $(LUA_O) $(LUAC_O)
 ALL_T= $(LUA_A) $(LUA_T) $(LUAC_T)
 ALL_A= $(LUA_A)
 
-.PHONY: clean all
 	
-all: atla.a $(ATLALC)
+all: $(ATLALC) $(LIBATLA)
 
-$(ATLALC): $(altalc_obj) $(LUA_A) ../getopt_port/getopt.a ../minfs/minfs.a
+ifeq ($(OS), Windows_NT)
+
+$(ATLALC): $(altalc_obj) $(LUA_A) $(LIBSMD)
 	@echo $(mkfile_path) Linking $@
-	$(LD) $(LDFLAGS2)
+	 $(LD) -subsystem:console -out:$@ $(ATLA_LDFLAGS) $^ 
 
-atla.a: $(obj) 
+$(LIBATLA): $(obj) 
 	@echo Linking $@
-	$(LDLIB) /OUT:$@ $(LDLIBFLAGS) $^
+	$(QUIET) $(LD) /lib -out:$@ $(ATLA_LDLIBFLAGS) $^
 
 $(LUA_A): $(BASE_O)
 	@echo Linking $@
-	$(LDLIB) /OUT:$@ $(LDLIBFLAGS) $^
+	$(QUIET) $(LD) /lib -out:$@ $(ATLA_LDLIBFLAGS) $^
 
+else
+
+$(ATLALC): $(altalc_obj) $(LUA_A) $(LIBSMD)
+	@echo $(mkfile_path) Linking $@
+	$(QUIET) $(CC) $(ATLA_LDFLAGS) $^ -o $@	
+
+$(LIBATLA): $(obj) 
+	@echo Linking $@
+	$(QUIET) $(AR) -r $@ $(ATLA_LDLIBFLAGS) $^
+
+$(LUA_A): $(BASE_O)
+	@echo Linking $@
+	$(QUIET) $(AR) -r $@ $(ATLA_LDLIBFLAGS) $^
+
+endif	
+.PHONY: clean all
 
 clean:
-	@$(RM) $(subst /,$(PSEP),src/*.o) && $(RM) $(subst /,$(PSEP),src/*.d) && $(RM) *.a
+	$(QUIET) rm -f src/*.o
+	$(QUIET) rm -f src/*.d
+	$(QUIET) rm -f src/atlalc/*.o
+	$(QUIET) rm -f src/atlalc/*.d
+	$(QUIET) rm -f $(LIBATLA) 
+	$(QUIET) rm -f $(ATLALC)
 
 .c.o:
-	@echo $<
-	$(CC) -c $(CFLAGS) $(INCLUDES) $(DEFINES) $< -o $@
+	$(QUIET) $(CC) -c $(CFLAGS) $(INCLUDES) $(DEFINES) $< -o $@
 
--include $(dep)   # include all dep files in the makefile
-
-# rule to generate a dep file by using the C preprocessor
-# (see man cpp for details on the -MM and -MT options)
-%.d: %.c
-	$(CC) $(CFLAGS) $(INCLUDES) $(DEFINES) $< -MM -MT $(@:.d=.o) >$@
-
-# Targets start here.
-#default: $(PLAT)
-#
-#all:	$(ALL_T)
-#
-#o:	$(ALL_O)
-#
-#a:	$(ALL_A)
-
-#$(LUA_T): $(LUA_O) $(LUA_A)
-#	$(CC) -o $@ $(LDFLAGS) $(LUA_O) $(LUA_A) $(LIBS)
-#
-#$(LUAC_T): $(LUAC_O) $(LUA_A)
-#	$(CC) -o $@ $(LDFLAGS) $(LUAC_O) $(LUA_A) $(LIBS)
-#
-#clean:
-#	$(RM) $(ALL_T) $(ALL_O)
-#
-#depend:
-#	@$(CC) $(CFLAGS) -MM l*.c
-#
-#echo:
-#	@echo "PLAT= $(PLAT)"
-#	@echo "CC= $(CC)"
-#	@echo "CFLAGS= $(CFLAGS)"
-#	@echo "LDFLAGS= $(SYSLDFLAGS)"
-#	@echo "LIBS= $(LIBS)"
-#	@echo "AR= $(AR)"
-#	@echo "RANLIB= $(RANLIB)"
-#	@echo "RM= $(RM)"
-#
-## Convenience targets for popular platforms
-#ALL= all
-#
-#none:
-#	@echo "Please do 'make PLATFORM' where PLATFORM is one of these:"
-#	@echo "   $(PLATS)"
-#
-#aix:
-#	$(MAKE) $(ALL) CC="xlc" CFLAGS="-O2 -DLUA_USE_POSIX -DLUA_USE_DLOPEN" SYSLIBS="-ldl" SYSLDFLAGS="-brtl -bexpall"
-#
-#ansi:
-#	$(MAKE) $(ALL) SYSCFLAGS="-DLUA_ANSI"
-#
-#bsd:
-#	$(MAKE) $(ALL) SYSCFLAGS="-DLUA_USE_POSIX -DLUA_USE_DLOPEN" SYSLIBS="-Wl,-E"
-#
-#freebsd:
-#	$(MAKE) $(ALL) SYSCFLAGS="-DLUA_USE_LINUX" SYSLIBS="-Wl,-E -lreadline"
-#
-#generic: $(ALL)
-#
-#linux:
-#	$(MAKE) $(ALL) SYSCFLAGS="-DLUA_USE_LINUX" SYSLIBS="-Wl,-E -ldl -lreadline"
-#
-#macosx:
-#	$(MAKE) $(ALL) SYSCFLAGS="-DLUA_USE_MACOSX" SYSLIBS="-lreadline" CC=cc
-#
-#mingw:
-#	$(MAKE) "LUA_A=lua52.dll" "LUA_T=lua.exe" \
-#	"AR=$(CC) -shared -o" "RANLIB=strip --strip-unneeded" \
-#	"SYSCFLAGS=-DLUA_BUILD_AS_DLL" "SYSLIBS=" "SYSLDFLAGS=-s" lua.exe
-#	$(MAKE) "LUAC_T=luac.exe" luac.exe
-#
-#posix:
-#	$(MAKE) $(ALL) SYSCFLAGS="-DLUA_USE_POSIX"
-#
-#solaris:
-#	$(MAKE) $(ALL) SYSCFLAGS="-DLUA_USE_POSIX -DLUA_USE_DLOPEN" SYSLIBS="-ldl"
-#
-## list targets that do not create files (but not all makes understand .PHONY)
-#.PHONY: all $(PLATS) default o a clean depend echo none
-
-# DO NOT DELETE
 
 $(LUAPRFIX)lapi.o: $(LUAPRFIX)lapi.c $(LUAPRFIX)lua.h $(LUAPRFIX)luaconf.h $(LUAPRFIX)lapi.h $(LUAPRFIX)llimits.h $(LUAPRFIX)lstate.h $(LUAPRFIX)lobject.h $(LUAPRFIX)ltm.h \
  $(LUAPRFIX)lzio.h $(LUAPRFIX)lmem.h $(LUAPRFIX)ldebug.h $(LUAPRFIX)ldo.h $(LUAPRFIX)lfunc.h $(LUAPRFIX)lgc.h $(LUAPRFIX)lstring.h $(LUAPRFIX)ltable.h $(LUAPRFIX)lundump.h \

@@ -34,6 +34,8 @@ be
 extern "C" {
 #endif //
 
+#include "atlaconfig.h"
+
 #if defined(_DEBUG)
 #define ATLA_DEBUG
 #else

@@ -118,29 +118,89 @@ typedef struct atAtlaRuntimeTypeInfo {
   struct atAtlaRuntimeTypeInfo* next;
 } atAtlaRuntimeTypeInfo_t;
 
+typedef struct atTypeVariant_t {
+  union {
+    int8_t   asInt8;
+    int16_t  asInt16;
+    int32_t  asInt32;
+    uint8_t  asUint8;
+    uint16_t asUint16;
+    uint32_t asUint32;
+    float    asFloat;
+    double   asDouble;
+  };
+  uint8_t term;
+} atTypeVariant_t;
+
+enum {
+  at_rinfo_none = 0,
+  at_rinfo_deprecated = 0x01,
+  at_rinfo_pointer = 0x02,
+  at_rinfo_dynamic_array = 0x04,
+  at_rinfo_fixed_array = 0x08,
+};
+
+enum {
+  at_rinfo_type_none = 0,
+
+  at_rinfo_type_int8,
+  at_rinfo_type_char,
+  at_rinfo_type_int16,
+  at_rinfo_type_int32,
+  at_rinfo_type_int64,
+
+  at_rinfo_type_uint8,
+  at_rinfo_type_uint16,
+  at_rinfo_type_uint32,
+  at_rinfo_type_uint64,
+
+  at_rinfo_type_float,
+  at_rinfo_type_double,
+
+  at_rinfo_type_user,
+};
+
+typedef struct atAtlaReflInfo_t {
+  char const* name;
+  size_t      arrayCount;
+  uint32_t    id;
+  uint32_t    flags;
+  uint32_t    verAdd, verRem;
+  uint32_t    type;
+  ptrdiff_t   offset;
+  struct {
+    struct atAtlaReflInfo_t const* reflData;
+  } typeExtra;
+  atTypeVariant_t* defaultVal;
+  atTypeVariant_t* minVal;
+  atTypeVariant_t* maxVal;
+  uint32_t memberCount;
+  struct atAtlaReflInfo_t* members;
+} atAtlaReflInfo_t;
+
 extern atAtlaRuntimeTypeInfo_t atla_runtime_type_list;
 
-void atSerializeWriteBegin(atAtlaSerializer_t* serializer,
+ATLA_EXPORT void ATLA_API atSerializeWriteBegin(atAtlaSerializer_t* serializer,
                            atAtlaContext_t*    ctx,
                            char const*         usertag,
                            atioaccess_t*       context,
                            uint32_t            version);
-void atSerializeWriteRoot(atAtlaSerializer_t*    serializer,
+ATLA_EXPORT void ATLA_API atSerializeWriteRoot(atAtlaSerializer_t*    serializer,
                           void*                  data,
                           atSerializeTypeProc_t* proc);
-void atSerializeWriteProcessPending(atAtlaSerializer_t* serializer);
-void atSerializeWriteFinalize(atAtlaSerializer_t* serializer);
+ATLA_EXPORT void ATLA_API atSerializeWriteProcessPending(atAtlaSerializer_t* serializer);
+ATLA_EXPORT void ATLA_API atSerializeWriteFinalize(atAtlaSerializer_t* serializer);
 
 // Hidden interface functions???
-void atSerializeWrite(atAtlaSerializer_t* serializer,
+ATLA_EXPORT void ATLA_API atSerializeWrite(atAtlaSerializer_t* serializer,
                       void*               src,
                       uint32_t            element_size,
                       uint32_t            element_count);
-uint32_t atSerializeWritePendingBlob(atAtlaSerializer_t* serializer,
+ATLA_EXPORT uint32_t ATLA_API atSerializeWritePendingBlob(atAtlaSerializer_t* serializer,
                                      void*               data,
                                      uint32_t            element_size,
                                      uint32_t            count);
-uint32_t atSerializeWritePendingType(atAtlaSerializer_t*    serializer,
+ATLA_EXPORT uint32_t ATLA_API atSerializeWritePendingType(atAtlaSerializer_t* serializer,
                                      void*                  data,
                                      char const*            name,
                                      atSerializeTypeProc_t* proc,
@@ -152,28 +212,29 @@ uint32_t atSerializeWritePendingType(atAtlaSerializer_t*    serializer,
 
 // libatla reading interface
 
-void atSerializeReadBegin(atAtlaSerializer_t* serializer,
+ATLA_EXPORT void ATLA_API atSerializeReadBegin(atAtlaSerializer_t* serializer,
                           atAtlaContext_t*    ctx,
                           atioaccess_t*       context,
                           uint32_t            version);
 
-void atSerializeReadRoot(atAtlaSerializer_t*    serializer,
+ATLA_EXPORT void ATLA_API atSerializeReadRoot(atAtlaSerializer_t*    serializer,
                          void*                  dest,
                          atSerializeTypeProc_t* proc);
 
-void atSerializeReadFinalize(atAtlaSerializer_t* serializer);
+ATLA_EXPORT void ATLA_API atSerializeReadFinalize(atAtlaSerializer_t* serializer);
 
 // Hidden interface functions???
-void atSerializeRead(atAtlaSerializer_t* serializer,
+ATLA_EXPORT void ATLA_API atSerializeRead(atAtlaSerializer_t* serializer,
                      void*               dest,
                      uint32_t            element_size,
                      uint32_t            element_count);
-void atSerializeSkip(atAtlaSerializer_t* serializer,
+ATLA_EXPORT void ATLA_API atSerializeSkip(atAtlaSerializer_t* serializer,
                      uint32_t            element_size,
                      uint32_t            element_count);
-void* atSerializeReadGetBlobLocation(atAtlaSerializer_t* serializer,
+ATLA_EXPORT void* ATLA_API atSerializeReadGetBlobLocation(atAtlaSerializer_t* serializer,
                                      uint32_t            blob_id);
-void* atSerializeReadTypeLocation(atAtlaSerializer_t*    serializer,
+
+ATLA_EXPORT void* ATLA_API atSerializeReadTypeLocation(atAtlaSerializer_t*    serializer,
                                   uint32_t               type_id,
                                   char const*            name,
                                   atSerializeTypeProc_t* proc);
@@ -181,11 +242,11 @@ void* atSerializeReadTypeLocation(atAtlaSerializer_t*    serializer,
 // void* atSerializeReadObjRef(atAtlaSerializer_t* serializer);
 
 
-uint64_t ATLA_API atGetAtlaVersion();
-void ATLA_API atCreateAtlaContext(atAtlaContext_t*         ctx,
+ATLA_EXPORT uint64_t ATLA_API atGetAtlaVersion();
+ATLA_EXPORT void ATLA_API atCreateAtlaContext(atAtlaContext_t*         ctx,
                                   atMemoryHandler_t const* mem_handler);
-void ATLA_API atDestroyAtlaContext(atAtlaContext_t*);
-void ATLA_API atContextRegisterType(atAtlaContext_t* ctx,
+ATLA_EXPORT void ATLA_API atDestroyAtlaContext(atAtlaContext_t*);
+ATLA_EXPORT void ATLA_API atContextRegisterType(atAtlaContext_t* ctx,
                                     char const*      name,
                                     size_t           size);
 
@@ -193,12 +254,13 @@ void ATLA_API atContextRegisterType(atAtlaContext_t* ctx,
   void atla_##type##_reg (atAtlaContext_t* c);                    \
   atla_##type##_reg ((ctx))
 
-size_t atUtilCalcReadMemRequirements(atAtlaSerializer_t* ser);
-int atUtilAssignReadMem(atAtlaSerializer_t* ser, void* mem, size_t len);
+ATLA_EXPORT size_t ATLA_API atUtilCalcReadMemRequirements(atAtlaSerializer_t* ser);
+ATLA_EXPORT int ATLA_API atUtilAssignReadMem(atAtlaSerializer_t* ser, void* mem, size_t len);
+ATLA_EXPORT int ATLA_API atUtilAllocAssignReadMem(atAtlaSerializer_t* ser);
 
-void atCreateFileIOContext(atioaccess_t* io, char const* path, char const* access);
+ATLA_EXPORT void ATLA_API atCreateFileIOContext(atioaccess_t* io, char const* path, char const* access);
 
-void atDestroyFileIOContext(atioaccess_t* io);
+ATLA_EXPORT void ATLA_API atDestroyFileIOContext(atioaccess_t* io);
 
 /*
 
@@ -223,6 +285,22 @@ void atDestroyFileIOContext(atioaccess_t* io);
         * Borrow from LBP method. Single global version number, linear add to
    data, no remove (only macro to ommit data from future writes)
 
+
+   ///
+   // New additional ideas for Atla
+   
+   *) Remove unused code files - one header, one source file?
+   *) Allow split & multiple lua files for declaring & defining types. I think each lua file registers (up to) two functions
+      one for declaring, one for defining. These are stored in the lua reg table and called later once all files are parsed
+   *) Fix mid type pointer offsets not working.
+   *) Allow per type versioning. 
+   *) Remove per field version checks - exchange this for whole type up versioning, user defines how to handle up version for each 
+      increment, no skipping versions allowed - could be done with strings of C code given in Lua. 
+      Also, no adding pointered types (because requires allocating mid-read?) this should be enforced by auto gen'd post fix check
+      on up versioning code given by user.
+   *) No mid read allocs. User can ask how much memory needed and then provide it. Same for writes
+   *) Enforce forward only reading.
+   *) Decide how to protect from fuzzing (initial idea, signed block reader abstraction so parsing can ignore the problem?).
 */
 
 #ifdef __cplusplus
