@@ -6,8 +6,8 @@
 
 // Other units
 #define SMD_UNITY_BUILD
-#define PLATFORM_USE_POSIX // TODO fix these defines
-#define PLATFORM_MACOS
+#define SMD_PLATFORM_USE_POSIX // TODO fix these defines
+#define SMD_PLATFORM_MACOS
 #include "../../external/smd/smd_unity0.c"
 // End other units
 
