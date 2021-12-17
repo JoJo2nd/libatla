@@ -1,9 +1,15 @@
-#include "getopt.h"
-#include "minfs.h"
-#include "lua.h"
-#include "lauxlib.h"
-#include "lualib.h"
+#include "../../external/smd/smd.h"
+#include "../../external/lua-5.2.4/src/lua.h"
+#include "../../external/lua-5.2.4/src/lauxlib.h"
+#include "../../external/lua-5.2.4/src/lualib.h"
 #include <stdlib.h>
+
+// Other units
+#define SMD_UNITY_BUILD
+#define PLATFORM_USE_POSIX // TODO fix these defines
+#define PLATFORM_MACOS
+#include "../../external/smd/smd_unity0.c"
+// End other units
 
 #define ATLA_MAX_PATH (1024)
 
@@ -15,6 +21,30 @@ static char* local_strdup(char const* s) {
   return sd;
 }
 #endif
+
+static int               verbose_flag;
+static struct gop_option cmd_opts[] = {
+  {.name = "verbose",
+   .usage = "Enable verbose output.",
+   .has_arg = gop_no_argument,
+   .flag = &verbose_flag,
+   .val = 1,
+   .short_name = 'v'},
+  {.name = "output",
+   .usage = "Output destination folder for generated C files.",
+   .has_arg = gop_required_argument,
+   .flag = NULL,
+   .val = 0,
+   .short_name = 'o'},
+  {.name = "version",
+   .usage = "Overwrite the version for serialization.",
+   .has_arg = gop_required_argument,
+   .flag = NULL,
+   .val = 0,
+   .short_name = 'f'},
+  {0}};
+
+#define VLOG(...) do { if (verbose_flag) { fprintf(stdout, __VA_ARGS__); } } while (0)
 
 enum {
   atla_type_none = 0,
@@ -118,7 +148,7 @@ static int l_create_type(lua_State* l) {
 
   uint32_t* ud_idx = lua_newuserdata(l, sizeof(uint32_t)); // s: user-data
   *ud_idx = alc_add_type(&atla);
-  // fprintf(stdout, "Adding type %s\n", type_name);
+  VLOG("Adding type %s\n", type_name);
   atlatype_t* atype = atla.types + *ud_idx;
   atype->firstField = atype->lastField = 0;
   atype->builtIn = atla_type_user;
@@ -128,6 +158,13 @@ static int l_create_type(lua_State* l) {
   atype->prefix = NULL;
   luaL_getmetatable(l, "atla.type"); // s: user-data, meta-tbl
   lua_setmetatable(l, -2);           // s: user-data
+  lua_getglobal(l, "atla"); // user-data, atla-lib
+  lua_getfield(l, -1, "types"); // user-data, atla-lib, atla-type-table
+  lua_pushvalue(l, -3); // user-data, atla-lib, atla-type-table, user-data
+  lua_setfield(l, -2, atype->name); // user-data, atla-lib, atla-type-table
+  //lua_pushinteger(l, atype->id); // user-data, atla-lib, atla-type-table, type-id
+  //lua_setfield(l, -2, ); // user-data, atla-lib, atla-type-table
+  lua_pop(l, 2); // user-data
   return 1;
 }
 
@@ -140,7 +177,7 @@ static int l_create_enum(lua_State* l) {
 
   uint32_t* ud_idx = lua_newuserdata(l, sizeof(uint32_t)); // s: user-data
   *ud_idx = alc_add_enum(&atla);
-  // fprintf(stdout, "Adding type %s\n", type_name);
+  VLOG("Adding enum %s\n", type_name);
   atlaenum_t* atype = atla.types + *ud_idx;
   atype->firstField = atype->lastField = 0;
   atype->id = id;
@@ -164,7 +201,7 @@ static int l_enum_value(lua_State* l) {
   *ud_idx = alc_add_field(&atla);
   atlaenum_t*  otype = atla.types + *owner_idx;
   atlafield_t* afield = atla.fields + *ud_idx;
-  // fprintf(stdout, "Adding field %s\n", field_name);
+  VLOG("Adding enum value %s\n", field_name);
   afield->name = strdup(field_name);
   afield->enumValue = value;
   afield->vAdd = version;
@@ -198,7 +235,7 @@ static int l_enum_deprecated_value(lua_State* l) {
   *ud_idx = alc_add_field(&atla);
   atlaenum_t*  otype = atla.types + *owner_idx;
   atlafield_t* afield = atla.fields + *ud_idx;
-  // fprintf(stdout, "Adding field %s\n", field_name);
+  VLOG("Adding deprecated enum value %s\n", field_name);
   afield->name = strdup(field_name);
   afield->id = id;
   afield->enumValue = value;
@@ -235,7 +272,7 @@ static int l_field(lua_State* l) {
   *ud_idx = alc_add_field(&atla);
   atlatype_t*  otype = atla.types + *owner_idx;
   atlafield_t* afield = atla.fields + *ud_idx;
-  // fprintf(stdout, "Adding field %s\n", field_name);
+  VLOG("Adding field %s\n", field_name);
   afield->name = strdup(field_name);
   afield->id = id;
   afield->type = *type_idx;
@@ -268,7 +305,7 @@ static int l_field_ref(lua_State* l) {
   *ud_idx = alc_add_field(&atla);
   atlatype_t*  otype = atla.types + *owner_idx;
   atlafield_t* afield = atla.fields + *ud_idx;
-  // fprintf(stdout, "Adding field %s\n", field_name);
+  VLOG("Adding field reference %s\n", field_name);
   afield->name = strdup(field_name);
   afield->id = id;
   afield->type = *type_idx;
@@ -308,7 +345,7 @@ static int l_field_array(lua_State* l) {
   }
   *ud_idx = alc_add_field(&atla);
   atlafield_t* afield = atla.fields + *ud_idx;
-  // fprintf(stdout, "Adding field %s\n", field_name);
+  VLOG("Adding field array %s\n", field_name);
   afield->name = strdup(field_name);
   afield->id = id;
   afield->type = *type_idx;
@@ -364,7 +401,7 @@ static int l_field_darray(lua_State* l) {
   }
   *ud_idx = alc_add_field(&atla);
   atlafield_t* afield = atla.fields + *ud_idx;
-  // fprintf(stdout, "Adding field %s\n", field_name);
+  VLOG("Adding field dynamic array %s\n", field_name);
   afield->name = strdup(field_name);
   afield->id = id;
   afield->type = *type_idx;
@@ -398,7 +435,7 @@ static int l_deprecated_field(lua_State* l) {
   *ud_idx = alc_add_field(&atla);
   atlatype_t*  otype = atla.types + *owner_idx;
   atlafield_t* afield = atla.fields + *ud_idx;
-  // fprintf(stdout, "Adding field %s\n", field_name);
+  VLOG("Adding deprecated field %s\n", field_name);
   afield->name = strdup(field_name);
   afield->id = id;
   afield->type = *type_idx;
@@ -432,7 +469,7 @@ static int l_deprecated_field_ref(lua_State* l) {
   *ud_idx = alc_add_field(&atla);
   atlatype_t*  otype = atla.types + *owner_idx;
   atlafield_t* afield = atla.fields + *ud_idx;
-  // fprintf(stdout, "Adding field %s\n", field_name);
+  VLOG("Adding deprecated field reference %s\n", field_name);
   afield->name = strdup(field_name);
   afield->id = id;
   afield->type = *type_idx;
@@ -473,7 +510,7 @@ static int l_deprecated_field_array(lua_State* l) {
   }
   *ud_idx = alc_add_field(&atla);
   atlafield_t* afield = atla.fields + *ud_idx;
-  // fprintf(stdout, "Adding field %s\n", field_name);
+  VLOG("Adding deprecated field array %s\n", field_name);
   afield->name = strdup(field_name);
   afield->id = id;
   afield->type = *type_idx;
@@ -524,7 +561,7 @@ static int l_deprecated_field_darray(lua_State* l) {
   }
   *ud_idx = alc_add_field(&atla);
   atlafield_t* afield = atla.fields + *ud_idx;
-  // fprintf(stdout, "Adding field %s\n", field_name);
+  VLOG("Adding deprecated field dynamic array %s\n", field_name);
   afield->name = strdup(field_name);
   afield->id = id;
   afield->type = *type_idx;
@@ -548,7 +585,7 @@ static int l_deprecated_field_darray(lua_State* l) {
 int luaopen_atla(lua_State* l) {
   struct luaL_Reg const lib[] = {
     {"create_type", l_create_type},
-    {"enum", l_create_enum},
+    {"create_enum", l_create_enum},
     {"field", l_field},
     {"field_ref", l_field_ref},
     {"field_array", l_field_array},
@@ -570,7 +607,7 @@ int luaopen_atla(lua_State* l) {
     {NULL, NULL}};
   static luaL_Reg const enumlib_m[] = { 
     {"value", l_enum_value},
-                                       {"deprecated_value", l_enum_deprecated_value},
+    {"deprecated_value", l_enum_deprecated_value},
     {NULL,NULL}
   };
   uint32_t*   ud_idx;
@@ -601,6 +638,11 @@ int luaopen_atla(lua_State* l) {
 
   luaL_newmetatable(l, "atla.field");
   luaL_newlib(l, lib);
+  // Add the type and enum tables
+  lua_newtable(l); // lib-tbl, new-tbl
+  lua_setfield(l, -2, "types"); //lib-tbl
+  lua_newtable(l); // lib-tbl, new-tbl
+  lua_setfield(l, -2, "enums"); // lib-tbl
   // Add common constants to our library table
   ud_idx = lua_newuserdata(l, sizeof(uint32_t)); // s: lib-tbl, user-data
   *ud_idx = alc_add_type(&atla);
@@ -721,37 +763,27 @@ int luaopen_atla(lua_State* l) {
   return 1;
 }
 
-static int               verbose_flag;
-static struct gop_option cmd_opts[] = {
-  {.name = "verbose",
-   .usage = "Enable verbose output.",
-   .has_arg = gop_no_argument,
-   .flag = &verbose_flag,
-   .val = 1,
-   .short_name = 'v'},
-  {.name = "output",
-   .usage = "Output destination folder for generated C files.",
-   .has_arg = gop_required_argument,
-   .flag = NULL,
-   .val = 0,
-   .short_name = 'o'},
-  {.name = "version",
-   .usage = "Overwrite the version for serialization.",
-   .has_arg = gop_required_argument,
-   .flag = NULL,
-   .val = 0,
-   .short_name = 'o'},
-  {0}};
-
 int main(int argc, char** argv) {
   lua_State* L = luaL_newstate();
   luaL_openlibs(L);
   luaL_requiref(L, "atla", luaopen_atla, 1);
   lua_pop(L, 1); // remove lib
 
+  size_t cwd_len = minfs_current_working_directory_len();
+  char* cwd = malloc(cwd_len+1);
+  minfs_current_working_directory(cwd, cwd_len+1);
+  VLOG("CWD:%s\n", cwd);
+  VLOG("Args: ");
+  for (int i = 0; i < argc; ++i) {
+    VLOG("%s ", argv[i]);
+  }
+  VLOG("\n");
+
   // parse all inputs
   int         error = 0;
   char const* output_dir = NULL;
+  int* fileFuncs = NULL;
+  lua_State** fileThreads = NULL;
 
   {
     struct gop_ctx args;
@@ -761,20 +793,57 @@ int main(int argc, char** argv) {
       switch (d) {
       case 'w': atla.writeVersion = atoi(args.optarg); break;
       case 'o': output_dir = strdup(args.optarg); break;
+      case 'v': verbose_flag = 1; break;
       case '?':
       default: exit(1);
       }
     }
 
-    for (int i = args.optind; i < argc; ++i) {
+    fileFuncs = malloc(argc * sizeof(int));
+    fileThreads = malloc(argc * sizeof(lua_State*));
+    for (int i = 0; i < argc; ++i) {
+      fileFuncs[i] = LUA_NOREF;
+      fileThreads[i] = NULL;
+    }
+    for (int i = args.optind; i < argc && error == 0; ++i) {
       // fprintf(stderr, "Expected argument after options\n");
       // int error = luaL_loadfile(L, argv[i]) || lua_pcall(L, 0, 0, 0);
-      if (luaL_loadfile(L, argv[i]) || lua_pcall(L, 0, 0, 0)) {
-        fprintf(stderr, "%s\n", lua_tostring(L, -1));
-        lua_pop(L, 1);
-        ++error;
+      VLOG("Source %s ", argv[i]);
+      if (luaL_loadfile(L, argv[i])) {
+        goto input_param_error;
+      } else {
+        lua_pushvalue(L, -1);
+        fileFuncs[i] = luaL_ref(L, LUA_REGISTRYINDEX); // reg[fileFunc[i]] = lua_chunk
+        VLOG("given ID %d\n", fileFuncs[i]);
+        fileThreads[i] = lua_newthread(L);
+        lua_pushvalue(L, -2);
+        lua_xmove(L, fileThreads[i], 1);
       }
     }
+    int yielded = 0;
+    do {
+      yielded = 0;
+      for (int i = 0; i < argc && error == 0; ++i) {
+        if (fileFuncs[i] != LUA_NOREF) {
+          VLOG("Running %s with ID %d & %p\n", argv[i], fileFuncs[i], fileThreads[i]);
+          int top = lua_gettop(L);
+          lua_pushnumber(L, fileFuncs[i]); 
+          lua_gettable(L, LUA_REGISTRYINDEX);
+          int status = lua_resume(fileThreads[i], 0, 0);
+          if (status == LUA_OK) {
+            VLOG("Finished\n");
+            fileFuncs[i] = LUA_NOREF;
+            fileThreads[i] = NULL;
+          } else if (status == LUA_YIELD) {
+            VLOG("Yielded\n");
+            yielded = 1;
+          } else {
+            goto input_param_error;
+          }
+          lua_settop(L, top);
+        }
+      }
+    } while (yielded);
   }
 
   if (!output_dir) {
@@ -783,9 +852,12 @@ int main(int argc, char** argv) {
   }
 
   if (error) {
-    fprintf(stderr, "%d errors encountered.\n", error);
+input_param_error:
+    fprintf(stderr, "errors encountered:\n  %s\n", lua_tostring(L, -1));
     exit(1);
   }
+
+  minfs_create_directories(output_dir);
 
   // Dump all enums
   int mfs_ret;
@@ -852,6 +924,7 @@ int main(int argc, char** argv) {
       fprintf(stderr, "Failed to build output path for type %s\n", type->name);
       exit(1);
     }
+
     FILE* dstf = fopen(dest_path, "wb");
 
     fprintf(dstf,
@@ -1313,7 +1386,7 @@ int main(int argc, char** argv) {
                 field->name);
         j = field->nextField;
       }
-      fprintf(dstf, "    default: return \"NULL\";\n  }\n", type->name);
+      fprintf(dstf, "    default: return \"NULL\";\n  }\n");
       fprintf(dstf, "}\n");
     }
     if (type->builtIn != atla_type_user) continue;

@@ -27,6 +27,7 @@ be
 *********************************************************************/
 
 #include "atla/atla.h"
+#include "hashtable.c"
 #include <string.h>
 #include <assert.h>
 

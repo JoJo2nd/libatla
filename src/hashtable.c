@@ -25,7 +25,7 @@ static void insert_helper(ht_hash_table_t* hash_tbl,
                           void const*      key,
                           void*            val);
 
-static uint32_t hash_key(ht_hash_table_t* hash_tbl, void const* key) {
+static uint32_t ht_hash_key(ht_hash_table_t* hash_tbl, void const* key) {
   uint32_t h = hash_tbl->hash_key(key);
 
   // MSB is used to indicate a deleted elem, so
@@ -149,7 +149,7 @@ static void insert_helper(ht_hash_table_t* hash_tbl,
 }
 
 static int lookup_index(ht_hash_table_t* hash_tbl, void const* key) {
-  const uint32_t hash = hash_key(hash_tbl, key);
+  const uint32_t hash = ht_hash_key(hash_tbl, key);
   int            pos = desired_pos(hash_tbl, hash);
   int            dist = 0;
   for (;;) {
@@ -191,7 +191,7 @@ void ht_table_insert(ht_hash_table_t* hash_tbl, void const* key, void* val) {
   if (++hash_tbl->num_elems >= hash_tbl->resize_threshold) {
     rehash(hash_tbl);
   }
-  insert_helper(hash_tbl, hash_key(hash_tbl, key), key, val);
+  insert_helper(hash_tbl, ht_hash_key(hash_tbl, key), key, val);
 }
 
 void ht_table_destroy(ht_hash_table_t* hash_tbl) {
@@ -213,7 +213,7 @@ void* ht_table_find(ht_hash_table_t* hash_tbl, void const* key) {
 }
 
 int ht_table_erase(ht_hash_table_t* hash_tbl, void const* key) {
-  const uint32_t hash = hash_key(hash_tbl, key);
+  const uint32_t hash = ht_hash_key(hash_tbl, key);
   (void)hash;
   const int      ix = lookup_index(hash_tbl, key);
 
