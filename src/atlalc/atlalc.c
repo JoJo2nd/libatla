@@ -186,6 +186,11 @@ static int l_create_enum(lua_State* l) {
   atype->name = strdup(type_name);
   luaL_getmetatable(l, "atla.enum"); // s: user-data, meta-tbl
   lua_setmetatable(l, -2);           // s: user-data
+  lua_getglobal(l, "atla"); // user-data, atla-lib
+  lua_getfield(l, -1, "enums"); // user-data, atla-lib, atla-type-table
+  lua_pushvalue(l, -3); // user-data, atla-lib, atla-type-table, user-data
+  lua_setfield(l, -2, atype->name); // user-data, atla-lib, atla-type-table
+  lua_pop(l, 2); // user-data
   return 1;
 }
 
