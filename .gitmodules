@@ -1,0 +1,3 @@
+[submodule "external/smd"]
+	path = external/smd
+	url = git@github.com:JoJo2nd/smd2.git
