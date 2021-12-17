@@ -28,10 +28,119 @@ be
 
 #pragma once
 
-#include "atla_config.h"
-#include "atla_memhandler.h"
-#include "hashtable.h"
-#include "atla/atla_ioaccess.h"
+#include <stdlib.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stddef.h>
+
+#if defined(_WIN32)
+#  if defined(libatla_EXPORTS)
+#    define ATLA_EXPORT __declspec(dllexport)
+#  else
+#    define ATLA_EXPORT __declspec(dllimport)
+#  endif
+#else // non windows
+#  define ATLA_EXPORT
+#endif
+
+#if defined(_DEBUG)
+#define ATLA_DEBUG
+#else
+#define ATLA_RELEASE
+#endif
+
+#ifdef ATLA_DEBUG
+#define ATLA_USE_ASSERT (1)
+#endif
+
+#define ATLA_CALLBACK __cdecl
+#define ATLA_API __cdecl
+
+//#define ATLA_USE_ASSERT (0)
+
+#if !defined(ATLA_USE_ASSERT)
+#define ATLA_USE_ASSERT (0)
+#endif
+
+#if ATLA_USE_ASSERT
+# define atla_assert(cond, msg, ...)
+#else
+# define atla_assert(cond, msg, ...)
+#endif
+
+#ifdef COMPILE_LIB_ATLA
+#define ATLA_ENSURE_PRIVATE_HEADER()
+#else
+#define ATLA_ENSURE_PRIVATE_HEADER()                                           \
+  atCompileTimeAssert(0 &&                                                     \
+                      "This header shouldn't be included outside of libatla")
+#endif
+
+typedef struct ht_hash_elem ht_elem_t;
+
+struct ht_hash_table {
+  uint32_t (*hash_key)(void const* key);
+  int (*compare_key)(void const* a, void const* b);
+  void (*value_free)(void const* k, void* v);
+  void* (*mralloc)(void* ptr, size_t size, void* user);
+  void (*mfree)(void* ptr, void* user);
+
+  ht_elem_t* __restrict buffer;
+  uint32_t* __restrict hashes;
+  void*    user;
+  int      num_elems;
+  int      capacity;
+  int      resize_threshold;
+  uint32_t mask;
+};
+
+typedef struct ht_hash_table ht_hash_table_t;
+
+typedef enum atTypeID {
+  atAtomicType = 1,
+  atCString,
+  atUserType,
+
+  atTypeInvalid = -1
+} atTypeID;
+
+//////////////////////////////////////////////////////////////////////////
+// IO access /////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+
+typedef enum atCreateFlags { ATLA_READ = 1, ATLA_WRITE = 1 << 1 } atCreateFlags;
+
+#define ATLA_INVALIDPOINTERREF (~0U)
+
+typedef enum atErrorCode {
+  ATLA_EOK = 0,
+  ATLA_NOMEM = -1,
+  ATLA_BADFILE = -2,
+  ATLA_DUPLICATE_DATA = -3,
+  ATLA_NOTSUPPORTED = -4,
+  ATLA_EPOINTERNOTFOUND = -5,
+  ATLA_EBADSCHEMAID = -6,
+  ATLA_ENESTEDSCHEMANOTFOUND = -7,
+  ATLA_ETYPEMISMATCH = -8,
+  ATLA_ENOTFOUND = -9,
+  ATLA_EOUTOFRANGE = -10
+} atErrorCode;
+
+typedef size_t             atsize_t;
+typedef unsigned long long atuint64;
+typedef signed long long   atint64;
+typedef unsigned long      atuint32;
+typedef signed long        atint32;
+typedef unsigned int       atuint;
+typedef signed int         atint;
+typedef unsigned short     atuint16;
+typedef signed short       atint16;
+typedef signed char        atint8;
+typedef unsigned char      atuint8;
+typedef atuint8            atbyte;
+typedef char               atchar;
+typedef atuint8            atbool;
+typedef atuint64           atUUID_t;
 
 #ifdef __cplusplus
 extern "C" {
@@ -40,6 +149,46 @@ extern "C" {
 /*
  * Main Include for alta lib
  **/
+
+typedef void*(ATLA_CALLBACK* atMallocProc)(atsize_t size, void* user);
+typedef void*(ATLA_CALLBACK* atReallocProc)(void*    ptr,
+                                            atsize_t size,
+                                            void*    user);
+typedef void(ATLA_CALLBACK* atFreeProc)(void* ptr, void* user);
+
+struct atMemoryHandler {
+  atMallocProc  alloc;
+  atReallocProc ralloc;
+  atFreeProc    free;
+  void*         user;
+};
+
+typedef struct atMemoryHandler atMemoryHandler_t;
+
+typedef enum atSeekOffset {
+  eSeekOffset_Begin = SEEK_SET,
+  eSeekOffset_Current = SEEK_CUR,
+  eSeekOffset_End = SEEK_END
+} atSeekOffset;
+
+typedef void(ATLA_CALLBACK* atIOReadProc)(void*    pBuffer,
+                                          uint32_t size,
+                                          void*    user);
+typedef void(ATLA_CALLBACK* atIOWriteProc)(void const* pBuffer,
+                                           uint32_t    size,
+                                           void*       user);
+typedef uint32_t(ATLA_CALLBACK* atIOSeekProc)(int64_t     offset,
+                                              atSeekOffset from,
+                                              void*        user);
+typedef int64_t(ATLA_CALLBACK* atIOTellProc)(void* user);
+
+typedef struct atioaccess_t {
+  atIOReadProc  readProc;
+  atIOWriteProc writeProc;
+  atIOSeekProc  seekProc;
+  atIOTellProc  tellProc;
+  void*         user;
+} atioaccess_t;
 
 #define ATLA_USER_TAG_LEN (32)
 

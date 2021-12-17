@@ -7,7 +7,6 @@
 * http://www.sebastiansylvan.com/post/robin-hood-hashing-should-be-your-default-hash-table-implementation/
 * also http://www.sebastiansylvan.com/post/more-on-robin-hood-hashing-2/
 */
-#include "atla/hashtable.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
