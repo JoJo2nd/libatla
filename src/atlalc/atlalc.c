@@ -83,6 +83,7 @@ typedef struct atlatype_t {
   int         lastInc;
   uint32_t    firstField;
   uint32_t    lastField;
+  uint32_t    version;
   // enum only! i.e. builtIn == atla_type_enum
   char const* prefix;
 } atlatype_t;
@@ -141,10 +142,11 @@ static uint32_t alc_add_field(atlalc_t* a) {
 }
 
 static int l_create_type(lua_State* l) {
-  // expected args: id, type name
+  // expected args: id, type name, version
   size_t      type_name_len;
   char const* type_name = luaL_checklstring(l, 2, &type_name_len);
   uint32_t    id = luaL_checkunsigned(l, 1);
+  uint32_t    version = luaL_checkunsigned(l, 3);
 
   uint32_t* ud_idx = lua_newuserdata(l, sizeof(uint32_t)); // s: user-data
   *ud_idx = alc_add_type(&atla);
@@ -156,6 +158,7 @@ static int l_create_type(lua_State* l) {
   atype->id = id;
   atype->name = strdup(type_name);
   atype->prefix = NULL;
+  atype->version = version;
   luaL_getmetatable(l, "atla.type"); // s: user-data, meta-tbl
   lua_setmetatable(l, -2);           // s: user-data
   lua_getglobal(l, "atla"); // user-data, atla-lib
@@ -169,11 +172,12 @@ static int l_create_type(lua_State* l) {
 }
 
 static int l_create_enum(lua_State* l) {
-  // expected args: id, type name, enum prefix
+  // expected args: id, type name, enum prefix, version
   size_t      type_name_len;
   uint32_t    id = luaL_checkunsigned(l, 1);
   char const* type_name = luaL_checklstring(l, 2, &type_name_len);
   char const* prefix = luaL_checklstring(l, 3, &type_name_len);
+  uint32_t    version = luaL_checkunsigned(l, 4);
 
   uint32_t* ud_idx = lua_newuserdata(l, sizeof(uint32_t)); // s: user-data
   *ud_idx = alc_add_enum(&atla);
@@ -184,6 +188,7 @@ static int l_create_enum(lua_State* l) {
   atype->builtIn = atla_type_enum;
   atype->prefix = strdup(prefix);
   atype->name = strdup(type_name);
+  atype->version = version;
   luaL_getmetatable(l, "atla.enum"); // s: user-data, meta-tbl
   lua_setmetatable(l, -2);           // s: user-data
   lua_getglobal(l, "atla"); // user-data, atla-lib
@@ -768,6 +773,65 @@ int luaopen_atla(lua_State* l) {
   return 1;
 }
 
+enum {
+  write_type_flag_skip_unused_fields = 0x01,
+  write_type_flag_skip_delta_struct = 0x02
+};
+
+void write_type_at_version(FILE* dstf, atlatype_t* type, uint32_t version, char const* name_postfix, uint32_t flags) {
+  fprintf(dstf, "\ntypedef struct %s%s {\n", type->name, name_postfix);
+  for (uint32_t j = type->firstField; j;) {
+    atlafield_t* field = atla.fields + j; 
+    atlatype_t*  fieldtype = atla.types + field->type;
+    int versionEarly = field->vAdd > version ? 1 : 0;
+    int deprecated = (field->vRem <= version && (field->flags & atla_field_deprecated)) ? 1 : 0;
+    j = field->nextField;
+    if ((flags & write_type_flag_skip_unused_fields) == 0 || (versionEarly == 0 && deprecated == 0)) {
+      if (deprecated || versionEarly) {
+        fprintf(dstf, "  //");
+      } else {
+        fprintf(dstf, "  ");
+      }
+      if (field->flags & atla_field_pointer) {
+        fprintf(dstf, "%s* %s;", fieldtype->name, field->name);
+      } else if (field->flags & atla_field_fixed_array) {
+        fprintf(
+          dstf, "%s %s[%u];", fieldtype->name, field->name, field->sizeField);
+      } else {
+        fprintf(dstf, "%s %s;", fieldtype->name, field->name);
+      }
+      if (deprecated) {
+        fprintf(dstf, "  deprecated in version %u\n", field->vRem);
+      } else if (versionEarly) {
+        fprintf(dstf, "  not yet added until version %u\n", field->vAdd);
+      } else {
+        fprintf(dstf, "// added in version %u\n", field->vAdd);
+      }
+    }
+  }
+  fprintf(dstf, "} %s%s;\n\n", type->name, name_postfix);
+  if ((flags & write_type_flag_skip_delta_struct) == 0) {
+    fprintf(dstf, "typedef struct %s%s_delta {\n", type->name, name_postfix);
+    for (uint32_t j = type->firstField; j;) {
+      atlafield_t* field = atla.fields + j;
+      //atlatype_t*  fieldtype = atla.types + field->type;
+      j = field->nextField;
+      if (field->flags & atla_field_deprecated) {
+        fprintf(dstf, "  //");
+      } else {
+        fprintf(dstf, "  ");
+      }
+      fprintf(dstf, "uint32_t %s_present : 1;", field->name);
+      if (field->flags & atla_field_deprecated) {
+        fprintf(dstf, "  deprecated in version %u\n", field->vRem);
+      } else {
+        fprintf(dstf, "// added in version %u\n", field->vAdd);
+      }
+    }
+    fprintf(dstf, "} %s%s_delta;\n\n", type->name, name_postfix);
+  }
+}
+
 int main(int argc, char** argv) {
   lua_State* L = luaL_newstate();
   luaL_openlibs(L);
@@ -888,6 +952,10 @@ input_param_error:
             "#endif // __cplusplus\n\n",
             type->name);
 
+    fprintf(dstf, 
+            "#define enum_%s_current_version (%u)\n\n", 
+            type->name, type->version);
+
     fprintf(dstf,
             "typedef enum %s {\n",
             type->name);
@@ -972,51 +1040,21 @@ input_param_error:
         dstf, "typedef struct %s %s;\n", fieldtype->name, fieldtype->name);
     }
 
+    fprintf(dstf, 
+            "#define type_%s_current_version (%u)\n", 
+            type->name, type->version);
 
-    fprintf(dstf, "\ntypedef struct %s {\n", type->name);
-    for (uint32_t j = type->firstField; j;) {
-      atlafield_t* field = atla.fields + j;
-      atlatype_t*  fieldtype = atla.types + field->type;
-      j = field->nextField;
-      if (field->flags & atla_field_deprecated) {
-        fprintf(dstf, "  //");
-      } else {
-        fprintf(dstf, "  ");
-      }
-      if (field->flags & atla_field_pointer) {
-        fprintf(dstf, "%s* %s;", fieldtype->name, field->name);
-      } else if (field->flags & atla_field_fixed_array) {
-        fprintf(
-          dstf, "%s %s[%u];", fieldtype->name, field->name, field->sizeField);
-      } else {
-        fprintf(dstf, "%s %s;", fieldtype->name, field->name);
-      }
-      if (field->flags & atla_field_deprecated) {
-        fprintf(dstf, "  deprecated in version %u\n", field->vRem);
-      } else {
-        fprintf(dstf, "// added in version %u\n", field->vAdd);
-      }
+    fprintf(dstf, "/*\n");
+    for (uint32_t v = 1; v < type->version; ++v) {
+      char buff[32];
+      sprintf(buff, "_v%u", v);
+      write_type_at_version(dstf, type, v, buff, 
+        write_type_flag_skip_delta_struct | 
+        write_type_flag_skip_unused_fields);  
     }
-    fprintf(dstf, "} %s;\n\n", type->name);
-    fprintf(dstf, "typedef struct %s_delta {\n", type->name);
-    for (uint32_t j = type->firstField; j;) {
-      atlafield_t* field = atla.fields + j;
-      //atlatype_t*  fieldtype = atla.types + field->type;
-      j = field->nextField;
-      if (field->flags & atla_field_deprecated) {
-        fprintf(dstf, "  //");
-      } else {
-        fprintf(dstf, "  ");
-      }
-      fprintf(dstf, "uint32_t %s_present : 1;", field->name);
-      if (field->flags & atla_field_deprecated) {
-        fprintf(dstf, "  deprecated in version %u\n", field->vRem);
-      } else {
-        fprintf(dstf, "// added in version %u\n", field->vAdd);
-      }
-    }
-    fprintf(dstf, "} %s_delta;\n\n", type->name);
-    
+    fprintf(dstf, "*/\n");
+    write_type_at_version(dstf, type, type->version, "", 0);
+
     fprintf(dstf, "#define %s_type_id (%u)\n\n", type->name, type->id);
 
     for (uint32_t j = type->firstField; j;) {

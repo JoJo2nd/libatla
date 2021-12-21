@@ -8,13 +8,13 @@ foo_typeid = min_typeid + 1
 vec2_typeid = min_typeid + 2
 vec3_typeid = min_typeid + 3
 
-test_type = atla.create_type(foo_typeid, "foo")
+test_type = atla.create_type(foo_typeid, "foo", 6)
 print("test_type = atla.create_type(foo_typeid, 'foo') is ", tostring(test_type))
 print("atla.types['foo'] is ", tostring(atla.types["foo"]))
 print("atla.types.foo is ", tostring(atla.types.foo))
 -- TODO -- print("atla.types[foo_typeid] is ", tostring(atla.types[foo_typeid]))
-test_nested_type = atla.create_type(vec2_typeid, "vec2")
-vec3_type = atla.create_type(vec3_typeid, "vec3")
+test_nested_type = atla.create_type(vec2_typeid, "vec2", 1)
+vec3_type = atla.create_type(vec3_typeid, "vec3", 1)
 
 -- Yield to allow other scripts to run and create types
 coroutine.yield()
@@ -44,6 +44,6 @@ atla.field_array(test_type, 6, 22, "rectv2", test_nested_type, 4)
 test_nested_type:field(1, 1, "x", atla.float)
 test_nested_type:field(1, 2, "y", atla.float)
 
-atla.field(vec3_type, 4, 1, "x", atla.float)
-atla.field(vec3_type, 4, 2, "y", atla.float)
-atla.field(vec3_type, 4, 3, "z", atla.float)
+atla.field(vec3_type, 1, 1, "x", atla.float)
+atla.field(vec3_type, 1, 2, "y", atla.float)
+atla.field(vec3_type, 1, 3, "z", atla.float)

@@ -238,6 +238,7 @@ struct atAtlaTypeData {
     void*    ptr;
   } rmem; // always null for write, on read filled in by user
   uint32_t flags;
+  uint32_t version; // per type versioning
 };
 typedef struct atAtlaTypeData atAtlaTypeData_t;
 
