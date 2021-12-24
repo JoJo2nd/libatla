@@ -129,7 +129,10 @@ ATLA_EXPORT void ATLA_API atSerializeWriteRoot(atAtlaSerializer_t*    serializer
   atSerializeWrite(serializer, &serializer->userTag, 1, ATLA_USER_TAG_LEN);
   atSerializeWrite(serializer, "ATLA", 1, 4);
   atSerializeWrite(serializer, &serializer->version, sizeof(uint32_t), 1);
-  (*proc)(serializer, data);
+  // This now just processes a list of objects instead of a root object
+  // requires the user to call atSerializeWritePendingType
+  //(*proc)(serializer, data);
+  atSerializeWriteProcessPending(serializer);
 }
 
 ATLA_EXPORT void ATLA_API atSerializeWriteProcessPending(atAtlaSerializer_t* serializer) {
@@ -158,7 +161,7 @@ ATLA_EXPORT void ATLA_API atSerializeWriteProcessPending(atAtlaSerializer_t* ser
         atSerializeWrite(serializer, &n, sizeof(uint32_t), 1);
         for (uint32_t j = 0; j < n; ++j) {
           (*serializer->objectList[i].proc.ptr)(
-            serializer, (uint8_t*)serializer->objectList[i].data + s * j);
+            serializer, serializer->objectList[i].version, (uint8_t*)serializer->objectList[i].data + s * j);
         }
       }
     }
@@ -255,6 +258,7 @@ uint32_t atSerializeWritePendingType(atAtlaSerializer_t*    serializer,
                                      void*                  data,
                                      char const*            name,
                                      atSerializeTypeProc_t* proc,
+                                     uint32_t               type_ver,
                                      uint32_t               element_size,
                                      uint32_t               count) {
   // Big TODO: handle pointer offsets with already serialized memory blobs
@@ -269,7 +273,8 @@ uint32_t atSerializeWritePendingType(atAtlaSerializer_t*    serializer,
                                .data = data,
                                .id = serializer->nextID,
                                .foffset = 0,
-                               .flags = 0};
+                               .flags = 0,
+                               .version = type_ver};
   atAddressIDPair_t* foundid = bsearch(&new_blob,
                                        serializer->idList,
                                        serializer->objectListLen,
@@ -380,9 +385,10 @@ ATLA_EXPORT void ATLA_API atSerializeReadBegin(atAtlaSerializer_t* serializer,
   }
 }
 
+// TODO: change this to just read list of objects an parse them all. 
 ATLA_EXPORT void ATLA_API atSerializeReadRoot(atAtlaSerializer_t*    serializer,
                          void*                  dest,
-                         atSerializeTypeProc_t* proc) {
+                         atSerializeTypeProc_t* proc, uint32_t type_ver) {
   atioaccess_t* io = serializer->io;
   // check that all objects have memory allocated for them.
   for (uint32_t i = 0, n = serializer->objectListLen; i < n; ++i) {
@@ -394,9 +400,11 @@ ATLA_EXPORT void ATLA_API atSerializeReadRoot(atAtlaSerializer_t*    serializer,
     }
   }
 
+  // TODO: change this to just read list of objects an parse them all. Can we
+  // just skip this call and use the loop below?
   io->seekProc(
     ATLA_USER_TAG_LEN + sizeof(uint32_t) + 4, eSeekOffset_Begin, io->user);
-  (*proc)(serializer, dest);
+  (*proc)(serializer, type_ver, dest);
 
   int work_to_do = 0;
   do {
@@ -406,7 +414,7 @@ ATLA_EXPORT void ATLA_API atSerializeReadRoot(atAtlaSerializer_t*    serializer,
         if (tdata->proc.ptr) {
           io->seekProc(tdata->foffset, eSeekOffset_Begin, io->user);
           for (uint32_t j = 0, m = tdata->count; j < m; ++j) {
-            (*tdata->proc.ptr)(serializer, (uint8_t*)tdata->rmem.ptr + (tdata->size * j));
+            (*tdata->proc.ptr)(serializer, tdata->version, (uint8_t*)tdata->rmem.ptr + (tdata->size * j));
           }
         } else {
           work_to_do = 1;

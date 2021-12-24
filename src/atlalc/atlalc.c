@@ -215,7 +215,7 @@ static int l_enum_value(lua_State* l) {
   afield->name = strdup(field_name);
   afield->enumValue = value;
   afield->vAdd = version;
-  afield->vRem = 0;
+  afield->vRem = otype->version+1;
   afield->owner = *owner_idx;
   afield->sizeField = 0;
   afield->flags = 0;
@@ -287,7 +287,7 @@ static int l_field(lua_State* l) {
   afield->id = id;
   afield->type = *type_idx;
   afield->vAdd = version;
-  afield->vRem = 0;
+  afield->vRem = otype->version+1;
   afield->owner = *owner_idx;
   afield->sizeField = 0;
   afield->flags = 0;
@@ -320,7 +320,7 @@ static int l_field_ref(lua_State* l) {
   afield->id = id;
   afield->type = *type_idx;
   afield->vAdd = version;
-  afield->vRem = 0;
+  afield->vRem = otype->version+1;
   afield->owner = *owner_idx;
   afield->sizeField = 0; // as this isn't a dynamic array, no size field
   afield->flags = atla_field_pointer;
@@ -360,7 +360,7 @@ static int l_field_array(lua_State* l) {
   afield->id = id;
   afield->type = *type_idx;
   afield->vAdd = version;
-  afield->vRem = 0;
+  afield->vRem = otype->version+1;
   afield->owner = *owner_idx;
   afield->sizeField =
     array_size; // as this is a array, size means actual number count
@@ -416,7 +416,7 @@ static int l_field_darray(lua_State* l) {
   afield->id = id;
   afield->type = *type_idx;
   afield->vAdd = version;
-  afield->vRem = 0;
+  afield->vRem = otype->version+1;
   afield->owner = *owner_idx;
   afield->sizeField = *len_field;
   afield->flags = atla_field_pointer | atla_field_dynamic_array;
@@ -832,6 +832,158 @@ void write_type_at_version(FILE* dstf, atlatype_t* type, uint32_t version, char 
   }
 }
 
+void write_read_func_at_version(FILE* dstf, atlatype_t* type, uint32_t version, char const* name_postfix, uint32_t flags) {
+  fprintf(
+    dstf,
+    "void atla_serialize_%s%s(atAtlaSerializer_t* serializer, uint32_t type_ver, void* vptr) {\n",
+    type->name, name_postfix);
+  write_type_at_version(dstf, type, version, name_postfix, 
+    write_type_flag_skip_unused_fields | 
+    write_type_flag_skip_delta_struct);
+  fprintf(dstf,
+          "  uint32_t a;// Used for reading array counts \n"
+          "  struct %s%s*       ptr = (struct %s%s*)vptr;\n"
+          "  memset(vptr, 0, sizeof(*vptr));\n",
+          type->name, name_postfix,
+          type->name, name_postfix);
+  //fprintf(dstf,
+  //        "  //if (serializer->reading) memset(ptr, 0, sizeof(%s));\n",
+  //        type->name);
+  //fprintf(dstf, "  //serializer->depth++;\n");
+
+  for (uint32_t j = type->firstField; j;) {
+    atlafield_t* field = atla.fields + j;
+    atlatype_t*  fieldtype = atla.types + field->type;
+    int versionEarly = field->vAdd > version ? 1 : 0;
+    int deprecated = (field->vRem <= version && (field->flags & atla_field_deprecated)) ? 1 : 0;
+    j = field->nextField;
+    if (deprecated || versionEarly) continue;
+    int          dep = field->flags & atla_field_deprecated;
+    if (field->flags & atla_field_pointer) {
+      if (fieldtype->builtIn != atla_type_user) {
+        int darr = field->flags & atla_field_dynamic_array;
+        if (darr) {
+          //atlafield_t* fsize = atla.fields + field->sizeField;
+          fprintf(dstf,
+                  "  atSerializeRead(serializer, &a, sizeof(a), 1);\n");
+          fprintf(dstf,
+                  "  ptr->%s = "
+                  "(%s*)atSerializeReadGetBlobLocation(serializer, "
+                  "a);\n",
+                  field->name,
+                  fieldtype->name);
+        } else {
+          fprintf(dstf,
+                  "  atSerializeRead(serializer, &a, sizeof(a), 1);\n");
+          fprintf(dstf,
+                  "  ptr->%s = "
+                  "(%s*)atSerializeReadGetBlobLocation(serializer, a);\n",
+                  field->name,
+                  fieldtype->name);
+        }
+      } else {
+        int darr = field->flags & atla_field_dynamic_array;
+        if (dep) {
+          fprintf(dstf,
+                  "  atSerializeRead(serializer, &a, sizeof(a), 1);\n");
+        } else {
+          //atlafield_t* fsize = atla.fields + field->sizeField;
+          fprintf(dstf,
+                  "  atSerializeRead(serializer, &a, sizeof(a), 1);\n");
+          if (darr) {
+            //atlafield_t* fsize = atla.fields + field->sizeField;
+            fprintf(
+              dstf,
+              "  ptr->%s = (%s*)atSerializeReadTypeLocation(serializer, "
+              "a, \"%s\", atla_serialize_%s);\n",
+              field->name,
+              fieldtype->name,
+              fieldtype->name,
+              fieldtype->name);
+          } else {
+            fprintf(dstf,
+                    "  ptr->%s = "
+                    "(%s*)atSerializeReadTypeLocation(serializer, "
+                    "a, \"%s\", atla_serialize_%s);\n",
+                    field->name,
+                    fieldtype->name,
+                    fieldtype->name,
+                    fieldtype->name);
+          }
+        }
+      }
+    } else {
+      uint32_t count =
+        (field->flags & atla_field_fixed_array) ? field->sizeField : 1;
+      uint32_t isArray = field->flags & atla_field_fixed_array;
+      if (fieldtype->builtIn != atla_type_user) {
+        fprintf(dstf,
+                "  atSerializeRead(serializer, &(ptr->%s), sizeof(%s), "
+                "%u);\n",
+                field->name,
+                fieldtype->name,
+                count);
+      } else {
+        char const* fname = field->name;
+        fprintf(dstf, "  for (uint32_t i = 0; i < %u; ++i) {\n", count);
+        fprintf(dstf,
+                "    atla_serialize_%s(serializer, type_%s_current_version, (&(%s%s))%s);\n",
+                fieldtype->name,
+                fieldtype->name,
+                "ptr->",
+                fname,
+                (!isArray) ? "+i" : "");
+        fprintf(dstf, "  }\n");
+      }
+    }
+  }
+  //fprintf(dstf, "  //if (serializer->depth == 1 && !serializer->reading)\n");
+  //fprintf(dstf, "    //atSerializeWriteProcessPending(serializer);\n");
+  //fprintf(dstf, "  //--serializer->depth;\n");
+  fprintf(dstf, "}\n");
+  fprintf(dstf, "\n");
+}
+
+void write_upcast_func(FILE* dstf, atlatype_t* type, uint32_t fromVer, uint32_t toVer, uint32_t flags) {
+  char vsstr[64], vdstr[64];
+  fprintf(
+    dstf,
+    "void atla_upcast_%s_v%d_to_v%d(atAtlaSerializer_t* serializer, void* src, void* dst) {\n",
+    type->name, fromVer, toVer);
+  sprintf(vsstr, "_v%u", fromVer);
+  sprintf(vdstr, "_v%u", toVer);
+  write_type_at_version(dstf, type, fromVer, vsstr, 
+    write_type_flag_skip_unused_fields | 
+    write_type_flag_skip_delta_struct);
+  write_type_at_version(dstf, type, toVer, vdstr, 
+    write_type_flag_skip_unused_fields | 
+    write_type_flag_skip_delta_struct);
+  fprintf(dstf,
+          "  struct %s%s* srcPtr = (struct %s%s*)src;\n"
+          "  struct %s%s* dstPtr = (struct %s%s*)dst;\n"
+          "  memset(dstPtr, 0, sizeof(*dstPtr));\n",
+          type->name, vsstr, type->name, vsstr,
+          type->name, vdstr, type->name, vdstr);
+
+  for (uint32_t j = type->firstField; j;) {
+    atlafield_t* field = atla.fields + j;
+    atlatype_t*  fieldtype = atla.types + field->type;
+    int includeInUpcast = (fromVer >= field->vAdd) && (toVer < field->vRem);
+    j = field->nextField;
+    if (includeInUpcast) {
+      fprintf(dstf,
+              "  dstPtr->%s = srcPtr->%s;\n",
+              field->name, field->name);
+    } else if (field->vAdd == toVer) {
+      fprintf(dstf, "  // Skipped %s - was added in version %d, upcase logic may handle this case.\n", 
+        field->name, field->vAdd);
+    }
+  }
+  fprintf(dstf,"  //TODO: output post upcast logic provided by lua.\n");
+  fprintf(dstf, "}\n");
+  fprintf(dstf, "\n");
+}
+
 int main(int argc, char** argv) {
   lua_State* L = luaL_newstate();
   luaL_openlibs(L);
@@ -1043,16 +1195,6 @@ input_param_error:
     fprintf(dstf, 
             "#define type_%s_current_version (%u)\n", 
             type->name, type->version);
-
-    fprintf(dstf, "/*\n");
-    for (uint32_t v = 1; v < type->version; ++v) {
-      char buff[32];
-      sprintf(buff, "_v%u", v);
-      write_type_at_version(dstf, type, v, buff, 
-        write_type_flag_skip_delta_struct | 
-        write_type_flag_skip_unused_fields);  
-    }
-    fprintf(dstf, "*/\n");
     write_type_at_version(dstf, type, type->version, "", 0);
 
     fprintf(dstf, "#define %s_type_id (%u)\n\n", type->name, type->id);
@@ -1068,7 +1210,7 @@ input_param_error:
       }
     }
     fprintf(dstf,
-            "\nvoid atla_serialize_%s(atAtlaSerializer_t*, void*);\n",
+            "\nvoid atla_serialize_%s(atAtlaSerializer_t*, uint32_t, void*);\n",
             type->name);
     fprintf(dstf, "extern atAtlaReflInfo_t const atla_reflection_%s;\n\n", type->name);
     fprintf(dstf, 
@@ -1106,9 +1248,18 @@ input_param_error:
     }
     fprintf(dstf, "\n");
 
+    for (uint32_t v = 1; v < type->version; ++v) {
+      char buff[32];
+      sprintf(buff, "_v%u", v);
+      write_read_func_at_version(dstf, type, v, buff, 0);
+    }
+    for (uint32_t v = 2; v < type->version; ++v) {
+      write_upcast_func(dstf, type, v-1, v, 0);
+    }
+
     fprintf(
       dstf,
-      "void atla_serialize_%s(atAtlaSerializer_t* serializer, void* vptr) {\n",
+      "void atla_serialize_%s(atAtlaSerializer_t* serializer, uint32_t type_ver, void* vptr) {\n",
       type->name);
     fprintf(dstf,
             "  struct %s*       ptr = (struct %s*)vptr;\n",
@@ -1226,18 +1377,20 @@ input_param_error:
             if (darr) {
               atlafield_t* fsize = atla.fields + field->sizeField;
               fprintf(dstf,
-                      "        serializer, ptr->%s, \"%s\", atla_serialize_%s, "
+                      "        serializer, ptr->%s, \"%s\", atla_serialize_%s, type_%s_current_version, "
                       "sizeof(%s), ptr->%s);\n",
                       field->name,
+                      fieldtype->name,
                       fieldtype->name,
                       fieldtype->name,
                       fieldtype->name,
                       fsize->name);
             } else {
               fprintf(dstf,
-                      "        serializer, ptr->%s, \"%s\", atla_serialize_%s, "
+                      "        serializer, ptr->%s, \"%s\", atla_serialize_%s, type_%s_current_version, "
                       "sizeof(%s), 1);\n",
                       field->name,
+                      fieldtype->name,
                       fieldtype->name,
                       fieldtype->name,
                       fieldtype->name);
@@ -1303,7 +1456,8 @@ input_param_error:
           }
           fprintf(dstf, "    for (uint32_t i = 0; i < %u; ++i) {\n", count);
           fprintf(dstf,
-                  "      atla_serialize_%s(serializer, (&(%s%s))%s);\n",
+                  "      atla_serialize_%s(serializer, type_%s_current_version, (&(%s%s))%s);\n",
+                  fieldtype->name,
                   fieldtype->name,
                   !dep ? "ptr->" : "",
                   fname,

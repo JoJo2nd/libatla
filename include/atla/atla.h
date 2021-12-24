@@ -199,7 +199,7 @@ typedef uintptr_t at_handle_t;
 
 typedef struct atAtlaSerializer atAtlaSerializer_t;
 
-typedef void(atSerializeTypeProc_t)(atAtlaSerializer_t*, void*);
+typedef void(atSerializeTypeProc_t)(atAtlaSerializer_t*, uint32_t version, void*);
 
 #define at_rflag_root (0x1)
 #define at_wflag_processed (0x2)
@@ -354,6 +354,7 @@ ATLA_EXPORT uint32_t ATLA_API atSerializeWritePendingType(atAtlaSerializer_t* se
                                      void*                  data,
                                      char const*            name,
                                      atSerializeTypeProc_t* proc,
+                                     uint32_t               type_ver,
                                      uint32_t               element_size,
                                      uint32_t               count);
 
@@ -369,7 +370,8 @@ ATLA_EXPORT void ATLA_API atSerializeReadBegin(atAtlaSerializer_t* serializer,
 
 ATLA_EXPORT void ATLA_API atSerializeReadRoot(atAtlaSerializer_t*    serializer,
                          void*                  dest,
-                         atSerializeTypeProc_t* proc);
+                         atSerializeTypeProc_t* proc,
+                         uint32_t type_ver);
 
 ATLA_EXPORT void ATLA_API atSerializeReadFinalize(atAtlaSerializer_t* serializer);
 
