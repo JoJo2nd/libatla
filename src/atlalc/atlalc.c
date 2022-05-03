@@ -984,6 +984,34 @@ void write_upcast_func(FILE* dstf, atlatype_t* type, uint32_t fromVer, uint32_t 
   fprintf(dstf, "\n");
 }
 
+void write_read_func(FILE* dstf, atlatype_t* type) {
+  fprintf(
+    dstf,
+    "void atla_deserialize_%s(atAtlaSerializer_t* serializer, uint32_t type_ver, void* vptr) {\n",
+    type->name);
+  fprintf(dstf,
+          "  struct %s*       ptr = (struct %s*)vptr;\n",
+          type->name,
+          type->name);
+  fprintf(dstf,
+        "  if (type_ver < type_%s_current_version) {\n"
+        "  }\n",
+        type->name);
+  fprintf(dstf, "}\n\n");
+}
+
+void write_write_func(FILE* dstf, atlatype_t* type) {
+  fprintf(
+    dstf,
+    "void atla_serialize_%s_new(atAtlaSerializer_t* serializer, uint32_t type_ver, void* vptr) {\n",
+    type->name);
+  fprintf(dstf,
+          "  struct %s*       ptr = (struct %s*)vptr;\n",
+          type->name,
+          type->name);
+  fprintf(dstf, "}\n\n");
+}
+
 int main(int argc, char** argv) {
   lua_State* L = luaL_newstate();
   luaL_openlibs(L);
@@ -1256,6 +1284,8 @@ input_param_error:
     for (uint32_t v = 2; v < type->version; ++v) {
       write_upcast_func(dstf, type, v-1, v, 0);
     }
+    write_read_func(dstf, type);
+    write_write_func(dstf, type);
 
     fprintf(
       dstf,

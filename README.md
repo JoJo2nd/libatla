@@ -2,63 +2,10 @@
 libatla
 =======
 
-A small C library to serialise and de-serialise C PODs (and probably C++ classes) into a binary format.
+A small C library to serialise and de-serialise C PODs into a binary format.
 
 # Usage
-Currently, subject to change :)
-
-Defining data
-```C
-// File: alldata.struct.inl
-// Not required to all be here, but here for ease
-
-enum BRversion { 
-  vesrion_0, 
-  vesrion_1, // Added extended character codes for font lookup
-  vesrion_next
-};
-
-#define version_latest (version_next-1)
-
-ATLA_BEGIN(chardata_t)
-ATLA_ADD_TYPE_D(version_0, int, x)
-ATLA_ADD_TYPE_D(version_0, int, y)
-ATLA_ADD_TYPE_D(version_0, int, width)
-ATLA_ADD_TYPE_D(version_0, int, height)
-ATLA_ADD_TYPE_D(version_0, int, baselineoffset)
-ATLA_ADD_TYPE_D(version_0, float, u0)
-ATLA_ADD_TYPE_D(version_0, float, v0)
-ATLA_ADD_TYPE_D(version_0, float, u1)
-ATLA_ADD_TYPE_D(version_0, float, v1)
-ATLA_END(chardata_t)
-
-ATLA_BEGIN(fontdata_t)
-ATLA_ADD_TYPE_D(version_0, uint32_t, fontSize);
-ATLA_ADD_TYPE_D(version_0, uint32_t, charCount);
-ATLA_ADD_TYPE_D(version_1, uint32_t, nCodepoints);
-ATLA_ADD_TYPE_DPTR(version_0, uint32_t, codepoints, nCodepoints);
-ATLA_ADD_TYPE_SPTR(version_0, chardata_t, metrics, charCount);
-ATLA_ADD_TYPE_D(version_0, uint32_t, texDataLen);
-ATLA_ADD_TYPE_DPTR(version_0, uint8_t, texData, texDataLen);
-ATLA_END(fontdata_t)
-
-ATLA_BEGIN(fontcollection_t)
-ATLA_ADD_TYPE_D(version_zero, uint32_t, nFonts);
-ATLA_ADD_TYPE_SPTR(version_zero, fontdata_t, fonts, nFonts);
-ATLA_END(fontcollection_t)
-```
-Then when including 
-```C
-#include "atla/atla.h"
-#include "atla/atla_type_begin.h"
-#include "alldata.struct.inl"
-#include "atla/atla_type_end.h"
-
-// In a .c file
-#include "atla/atla_def_begin.h"
-#include "alldata.struct.inl"
-#include "atla/atla_def_end.h"
-```
+Currently all subject to change :)
 
 To serialize out to disk
 ```C
