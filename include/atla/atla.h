@@ -123,7 +123,8 @@ typedef enum atErrorCode {
   ATLA_ENESTEDSCHEMANOTFOUND = -7,
   ATLA_ETYPEMISMATCH = -8,
   ATLA_ENOTFOUND = -9,
-  ATLA_EOUTOFRANGE = -10
+  ATLA_EOUTOFRANGE = -10,
+  ATLA_INCORRECT_TYPE_VERSION = -11,
 } atErrorCode;
 
 typedef size_t             atsize_t;
@@ -199,7 +200,7 @@ typedef uintptr_t at_handle_t;
 
 typedef struct atAtlaSerializer atAtlaSerializer_t;
 
-typedef void(atSerializeTypeProc_t)(atAtlaSerializer_t*, uint32_t version, void*);
+typedef int(atSerializeTypeProc_t)(atAtlaSerializer_t*, uint32_t version, void*);
 
 #define at_rflag_root (0x1)
 #define at_wflag_processed (0x2)
