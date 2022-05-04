@@ -218,6 +218,22 @@ struct atAtlaContext_t {
 };
 typedef struct atAtlaContext_t atAtlaContext_t;
 
+typedef struct atAtlaFileHeader_t {
+  char fourcc[4];
+  union {
+    struct {
+      uint16_t major, minor, revision, patch;
+    } fileFormat;
+    size_t fileFormatVersion;
+  };
+  size_t objectCount;
+  size_t stringTableLen;
+} atAtlaFileHeader_t;
+
+typedef struct atAtlaFileFooter_t {
+  //?
+} atAtlaFileFooter_t;
+
 struct atAtlaTypeData {
   union {
     at_loc_t    offset;
@@ -256,6 +272,7 @@ struct atAtlaSerializer {
   uint32_t           nextID;
   uint32_t           depth;
   uint32_t           objectListLen, objectListRes;
+  atAtlaFileHeader_t fileHeader;
   atAtlaTypeData_t*  objectList;
   atAddressIDPair_t* idList;
   char*              rStrings;
@@ -417,25 +434,7 @@ ATLA_EXPORT void ATLA_API atDestroyFileIOContext(atioaccess_t* io);
 /*
 
         Atla -
-        1) Should be a self describing format. i.e. Format can be read by other
-   tools & data types within a serialised blob are 'understandable'. Could be
-   optional?
-        2) Minimal code should be written by user. May result in a funky meta
-   lang but avoids errors. Look at the LBP method and repeat includes to define
-                 define struct & serialise
-        3) Should provide a runtime reflection interface. Struct data described
-   by arrays of elements(?) Must be optional!
-        4) Must be backward compat
-        5) Prasing should be simple and not use rewind seeking
 
-        Current thoughts:
-        * Pointers are stored as object IDs in a binary blob. Hash map on write
-   to avoid rewriting the same data
-        * Footer describes all formats in blob (type ids & descriptors are saved
-   on write?)
-        * Footer note object counts for pre-alloction.
-        * Borrow from LBP method. Single global version number, linear add to
-   data, no remove (only macro to ommit data from future writes)
 
 
    ///
