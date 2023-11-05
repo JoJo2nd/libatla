@@ -27,523 +27,644 @@ be
 *********************************************************************/
 
 #include "atla/atla.h"
-#include "hashtable.c"
+#include "smd.h"
 #include <string.h>
 #include <assert.h>
 
-//////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////
+#define atla_FileBlockHeader_disksize (sizeof(atuint32) * 2 + sizeof(atuint64))
 
-#define ATLA_VERSION_MAJOR (0)
-#define ATLA_VERSION_MINOR (1)
-#define ATLA_VERSION_REV (1)
+#define atla_FileHeader_version (1)
+#define atla_FileHeader_disksize (atla_FileBlockHeader_disksize)
+#define atla_FileHeader_fourCC (smd_make_fourCC('A', 'T', 'L', 'A'))
 
-#define at_itoptr(x) ((void*)((uintptr_t)(x)))
+struct atla_FileObjectEntry {
+  atuint32 typeID;
+  atuint32 objectID;
+  atuint32 count;
+};
+#define atla_FileObjectEntry_disksize (sizeof(atuint32) * 3)
 
-atAtlaRuntimeTypeInfo_t atla_runtime_type_list;
+struct atla_FileObject {
+  atla_FileBlockHeader_t blkHeader;
+  atuint32               typeID;
+  atuint32               objectID;
+  atuint32               version;
+  atuint32               count;
+};
+#define atla_FileObject_version (1)
+#define atla_FileObject_disksize (atla_FileBlockHeader_disksize + sizeof(atuint32) * 4)
+#define atla_FileObject_fourCC (smd_make_fourCC('O', 'b', 'j', 'D'))
 
-atAtlaRuntimeTypeInfo_t* atla_type_reg(atAtlaRuntimeTypeInfo_t* head,
-                                       atAtlaRuntimeTypeInfo_t* next) {
-  atAtlaRuntimeTypeInfo_t* tail = head->next;
-  head->next = next;
-  return tail;
-}
+struct atla_FileObjectList {
+  atla_FileBlockHeader_t blkHeader;
+  atuint32               count;
+};
+#define atla_FileObjectList_version (1)
+#define atla_FileObjectList_disksize (atla_FileBlockHeader_disksize + sizeof(atuint32))
+#define atla_FileObjectList_fourCC (smd_make_fourCC('O', 'b', 'j', 'L'))
 
-static int addr_comp(void const* a, void const* b) {
-  atAddressIDPair_t const *c = a, *d = b;
-  if ((uintptr_t)c->address < (uintptr_t)d->address) return -1;
-  if ((uintptr_t)c->address > (uintptr_t)d->address) return 1;
-  return 0;
-}
+struct atla_FileObjectRef {
+  atuint32 objectID;
+  atuint32 compositeElementID;
+};
 
-uint64_t ATLA_API atGetAtlaVersion() {
-  return (((atuint64)(ATLA_VERSION_MAJOR & 0xFFFF) << 48) |
-          ((atuint64)(ATLA_VERSION_MAJOR & 0xFFFF) << 32) | ATLA_VERSION_REV);
-}
+struct atla_ObjectRef {
+  atuint32                   objectID;
+  atuint32                   typeID;
+  atuint32                   version;
+  atsize_t                   count;
+  atsize_t                   runtimeSize;
+  atsize_t                   diskSize;
+  atbyte*                    dataPtr;
+  atsize_t                   dataLen;
+  atuint32                   flags;
+  struct atla_ObjectRef*     next;
+  struct alta_Context const* ownerCtx;
+};
 
-static void* atla_malloc(size_t size, void* user) {
-  return malloc(size);
-}
-static void* atla_realloc(void* ptr, size_t size, void* user) {
-  return realloc(ptr, size);
-}
-static void atla_free(void* ptr, void* user) {
-  free(ptr);
-}
+typedef struct atla_ObjectRefPool    atla_ObjectRefPool_t;
+typedef struct atla_PointerIndexPair atla_PointerIndexPair_t;
+struct atla_PointerIndexPair {
+  uintptr_t ptrBegin, ptrEnd;
+  atuint32  index;
+};
 
-static void atla_read(void* buffer, uint32_t size, void* user) {
-  FILE* f = user;
-  fread(buffer, size, 1, f);
-}
-static void atla_write(void const* src, uint32_t size, void* user) {
-  FILE* f = user;
-  fwrite(src, size, 1, f);
-}
-static uint32_t atla_seek(int64_t offset, atSeekOffset from, void* user) {
-  FILE* f = user;
-  return fseek(f, (long)offset, from);
-}
-static int64_t atla_tell(void* user) {
-  FILE* f = user;
-  return (int64_t)ftell(f);
-}
+struct atla_ObjectRefPool {
+  uintptr_t                low;
+  uintptr_t                high;
+  atla_ObjectRef_t*        objRefs;
+  atla_PointerIndexPair_t* ptrs;
+  atuint32                 nextIndex, indexLimit;
+  atla_ObjectRefPool_t*    next;
+};
 
-void atCreateFileIOContext(atioaccess_t* io, char const* path, char const* access) {
-  io->readProc = atla_read;
-  io->writeProc = atla_write;
-  io->seekProc = atla_seek;
-  io->tellProc = atla_tell;
-  io->user = fopen(path, access);
-}
+atsize_t BaseTypeSizeLookup[] = {
+  0,                // atla_type_none = 0,
+  sizeof(atint8),   // atla_type_int8,
+  sizeof(atchar),   // atla_type_char,
+  sizeof(atint16),  // atla_type_int16,
+  sizeof(atint32),  // atla_type_int32,
+  sizeof(atint64),  // atla_type_int64,
+  sizeof(atuint8),  // atla_type_uint8,
+  sizeof(atuint16), // atla_type_uint16,
+  sizeof(atuint32), // atla_type_uint32,
+  sizeof(atuint64), // atla_type_uint64,
+  sizeof(float),    // atla_type_float,
+  sizeof(double),   // atla_type_double,
+  0,                // atla_type_composite,
+  0,                // atla_type_custom_type_id_first,
+};
 
-void atDestroyFileIOContext(atioaccess_t* io) {
-  fclose(io->user);
-}
-
-ATLA_EXPORT void ATLA_API atSerializeWriteBegin(atAtlaSerializer_t* serializer,
-                           atAtlaContext_t*    ctx,
-                           char const*         usertag,
-                           atioaccess_t*       io,
-                           uint32_t            version) {
-  atMemoryHandler_t* mem = &ctx->mem;
-  serializer->ctx = ctx;
-  serializer->mem = &ctx->mem;
-  serializer->io = io;
-  serializer->reading = 0;
-  serializer->version = version;
-  serializer->nextID = 1;
-  serializer->depth = 0;
-  serializer->objectListLen = 0;
-  serializer->objectListRes = 16;
-  serializer->objectList =
-    mem->alloc(sizeof(atAtlaTypeData_t) * serializer->objectListRes, mem->user);
-  serializer->idList = mem->alloc(
-    sizeof(atAddressIDPair_t) * serializer->objectListRes, mem->user);
-  strncpy(serializer->userTag, usertag, ATLA_USER_TAG_LEN);
+atsize_t atla_GetObjectRefPoolRequiredSize(atuint32 max_objects) {
+  return (sizeof(atla_ObjectRefPool_t) + (max_objects * ((sizeof(atla_ObjectRef_t) + sizeof(atla_PointerIndexPair_t)))) + 15) & ~15;
 }
 
-ATLA_EXPORT void ATLA_API atSerializeWriteRoot(atAtlaSerializer_t*    serializer,
-                          void*                  data,
-                          atSerializeTypeProc_t* proc) {
-  atSerializeWrite(serializer, &serializer->userTag, 1, ATLA_USER_TAG_LEN);
-  atSerializeWrite(serializer, "ATLA", 1, 4);
-  atSerializeWrite(serializer, &serializer->version, sizeof(uint32_t), 1);
-  // This now just processes a list of objects instead of a root object
-  // requires the user to call atSerializeWritePendingType
-  //(*proc)(serializer, data);
-  atSerializeWriteProcessPending(serializer);
-}
-
-ATLA_EXPORT void ATLA_API atSerializeWriteProcessPending(atAtlaSerializer_t* serializer) {
-  // walk the list of objects awaiting writes, find first that hasn't be done
-  // and do it
-  // continue until nothing is left to do...Note that more objects may be added
-  // mid iteration of this list
-  for (uint32_t i = 0; i < serializer->objectListLen; ++i) {
-    if ((serializer->objectList[i].flags & at_wflag_processed) == 0) {
-      // IDs are 1 based because zero is reserved for null pointers
-      serializer->objectList[i].foffset =
-        serializer->io->tellProc(serializer->io->user) + sizeof(uint32_t);
-      serializer->objectList[i].flags |= at_wflag_processed;
-      if (!serializer->objectList[i].proc.ptr) {
-        // atomic data type, count first then data
-        atSerializeWrite(
-          serializer, &serializer->objectList[i].count, sizeof(uint32_t), 1);
-        atSerializeWrite(serializer,
-                         serializer->objectList[i].data,
-                         serializer->objectList[i].size,
-                         serializer->objectList[i].count);
-      } else {
-        // non-atomic data type
-        uint32_t n = serializer->objectList[i].count;
-        uint32_t s = serializer->objectList[i].size;
-        atSerializeWrite(serializer, &n, sizeof(uint32_t), 1);
-        for (uint32_t j = 0; j < n; ++j) {
-          (*serializer->objectList[i].proc.ptr)(
-            serializer, serializer->objectList[i].version, (uint8_t*)serializer->objectList[i].data + s * j);
-        }
-      }
-    }
+int atla_AssignObjectRefPool(atla_Context_t* ctx, void* ptr, atsize_t size) {
+  atla_ObjectRefPool_t* new_pool = ptr;
+  new_pool->low = ~((uintptr_t)0);
+  new_pool->high = 0;
+  new_pool->next = NULL;
+  if (ctx->sentinelPool != NULL) ctx->sentinelPool->next = new_pool;
+  ctx->sentinelPool = new_pool;
+  if (ctx->objectPool == NULL) {
+    ctx->objectPool = ctx->activePool = new_pool;
   }
+  size -= sizeof(atla_ObjectRefPool_t);
+  new_pool->indexLimit = size / (sizeof(atla_ObjectRef_t) + sizeof(uintptr_t));
+  new_pool->objRefs = (atla_ObjectRef_t*)(new_pool + 1);
+  new_pool->ptrs = (atla_PointerIndexPair_t*)(new_pool->objRefs + new_pool->indexLimit);
+  new_pool->nextIndex = 0;
+  return ATLA_EOK;
 }
 
-ATLA_EXPORT void ATLA_API atSerializeWriteFinalize(atAtlaSerializer_t* serializer) {
-  // sort object list by object ID (for easy look up next time)
-  // write the footer
-  atioaccess_t* io = serializer->io;
-  uint32_t      total_str_len = 0;
-  for (uint32_t i = 0, n = serializer->objectListLen; i < n; ++i) {
-    serializer->objectList[i].data = NULL;
-    char const* name_str = serializer->objectList[i].name.ptr;
-    if (name_str && !(serializer->objectList[i].flags & at_rflag_hasname)) {
-      //uint32_t offset = total_str_len;
-      uint32_t name_str_len = (uint32_t)(strlen(name_str) + 1);
-      io->writeProc(name_str, name_str_len, io->user);
-      serializer->objectList[i].flags |= at_rflag_hasname;
-      for (uint32_t j = i; j < n; ++j) {
-        if (serializer->objectList[j].name.ptr == name_str) {
-          serializer->objectList[j].flags |= at_rflag_hasname;
-          serializer->objectList[j].name.offset = total_str_len;
-          serializer->objectList[j].proc.offset = 0;
-        }
-      }
-      total_str_len += name_str_len;
-    }
+static atla_ObjectRef_t* allocObjectRef(atla_Context_t* ctx, void const* ptr, atsize_t len) {
+  if (ctx->activePool->nextIndex == ctx->activePool->indexLimit) {
+    // try next pool
+    if (ctx->activePool->next == NULL) return NULL;
+    ctx->activePool = ctx->activePool->next;
   }
-
-  io->writeProc(serializer->objectList,
-                sizeof(atAtlaTypeData_t) * serializer->objectListLen,
-                io->user);
-  io->writeProc(&serializer->objectListLen, sizeof(uint32_t), io->user);
-  io->writeProc(&total_str_len, sizeof(uint32_t), io->user);
-}
-
-void atSerializeWrite(atAtlaSerializer_t* serializer,
-                      void*               src,
-                      uint32_t            element_size,
-                      uint32_t            element_count) {
-  atioaccess_t* io = serializer->io;
-  io->writeProc(src, element_size * element_count, io->user);
-}
-
-uint32_t atSerializeWritePendingBlob(atAtlaSerializer_t* serializer,
-                                     void*               data,
-                                     uint32_t            element_size,
-                                     uint32_t            count) {
-  // Big TODO: handle pointer offsets with already serialized memory blobs
-  // (track with id plus offset??)
-
-  if (!data) return 0;
-  atMemoryHandler_t* mem = serializer->mem;
-  atAtlaTypeData_t   new_blob = {.name.ptr = NULL,
-                               .proc.ptr = NULL,
-                               .size = element_size,
-                               .count = count,
-                               .data = data,
-                               .id = serializer->nextID,
-                               .foffset = 0,
-                               .flags = 0};
-  atAddressIDPair_t* foundid = bsearch(&new_blob,
-                                       serializer->idList,
-                                       serializer->objectListLen,
-                                       sizeof(atAddressIDPair_t),
-                                       addr_comp);
-  if (foundid) return serializer->objectList[foundid->index].id;
-
-  if (serializer->objectListLen + 1 >= serializer->objectListRes) {
-    serializer->objectListRes *= 2;
-    serializer->objectList =
-      mem->ralloc(serializer->objectList,
-                  sizeof(atAtlaTypeData_t) * serializer->objectListRes,
-                  mem->user);
-    serializer->idList =
-      mem->ralloc(serializer->idList,
-                  sizeof(atAddressIDPair_t) * serializer->objectListRes,
-                  mem->user);
-  }
-  serializer->objectList[serializer->objectListLen] = new_blob;
-  serializer->idList[serializer->objectListLen].index =
-    serializer->objectListLen;
-  serializer->idList[serializer->objectListLen++].address = data;
-  ++serializer->nextID;
-  qsort(serializer->idList,
-        serializer->objectListLen,
-        sizeof(atAddressIDPair_t),
-        addr_comp);
-  return new_blob.id;
-}
-
-uint32_t atSerializeWritePendingType(atAtlaSerializer_t*    serializer,
-                                     void*                  data,
-                                     char const*            name,
-                                     atSerializeTypeProc_t* proc,
-                                     uint32_t               type_ver,
-                                     uint32_t               element_size,
-                                     uint32_t               count) {
-  // Big TODO: handle pointer offsets with already serialized memory blobs
-  // (track with id plus offset??)
-
-  if (!data) return 0;
-  atMemoryHandler_t* mem = serializer->mem;
-  atAtlaTypeData_t   new_blob = {.name.ptr = name,
-                               .proc.ptr = proc,
-                               .size = element_size,
-                               .count = count,
-                               .data = data,
-                               .id = serializer->nextID,
-                               .foffset = 0,
-                               .flags = 0,
-                               .version = type_ver};
-  atAddressIDPair_t* foundid = bsearch(&new_blob,
-                                       serializer->idList,
-                                       serializer->objectListLen,
-                                       sizeof(atAddressIDPair_t),
-                                       addr_comp);
-  if (foundid) return serializer->objectList[foundid->index].id;
-
-  if (serializer->objectListLen + 1 >= serializer->objectListRes) {
-    serializer->objectListRes *= 2;
-    serializer->objectList =
-      mem->ralloc(serializer->objectList,
-                  sizeof(atAtlaTypeData_t) * serializer->objectListRes,
-                  mem->user);
-    serializer->idList =
-      mem->ralloc(serializer->idList,
-                  sizeof(atAddressIDPair_t) * serializer->objectListRes,
-                  mem->user);
-  }
-  serializer->objectList[serializer->objectListLen] = new_blob;
-  serializer->idList[serializer->objectListLen].index =
-    serializer->objectListLen;
-  serializer->idList[serializer->objectListLen++].address = data;
-  ++serializer->nextID;
-  qsort(serializer->idList,
-        serializer->objectListLen,
-        sizeof(atAddressIDPair_t),
-        addr_comp);
-  return new_blob.id;
-}
-
-ATLA_EXPORT void ATLA_API atSerializeRead(atAtlaSerializer_t* serializer,
-                     void*               dest,
-                     uint32_t            element_size,
-                     uint32_t            element_count) {
-  atioaccess_t* io = serializer->io;
-  io->readProc(dest, element_size*element_count, io->user);
-}
-
-ATLA_EXPORT void ATLA_API atSerializeSkip(atAtlaSerializer_t* serializer,
-                     uint32_t            element_size,
-                     uint32_t            element_count) {
-  atioaccess_t* io = serializer->io;
-  io->seekProc(element_size*element_count, eSeekOffset_Current, io->user);
-}
-
-ATLA_EXPORT void* ATLA_API atSerializeReadGetBlobLocation(atAtlaSerializer_t* serializer,
-                                     uint32_t            blob_id) {
-  if (blob_id == 0) return NULL;
-  return serializer->objectList[blob_id - 1].rmem.ptr;
-}
-
-
-ATLA_EXPORT void* ATLA_API atSerializeReadTypeLocation(atAtlaSerializer_t*    serializer,
-                                  uint32_t               type_id,
-                                  char const*            name,
-                                  atSerializeTypeProc_t* proc) {
-  if (type_id == 0) return NULL;
-  serializer->objectList[type_id - 1].proc.ptr = proc;
-  return serializer->objectList[type_id - 1].rmem.ptr;
-}
-
-ATLA_EXPORT void ATLA_API atSerializeReadBegin(atAtlaSerializer_t* serializer,
-                          atAtlaContext_t*    ctx,
-                          atioaccess_t*       io,
-                          uint32_t            version) {
-  uint32_t           string_table_len;
-  char               atla_tag[5] = {0};
-  atMemoryHandler_t* mem = &ctx->mem;
-  memset(serializer, 0, sizeof(atAtlaSerializer_t));
-  serializer->ctx = ctx;
-  serializer->io = io;
-  serializer->mem = &ctx->mem;
-  serializer->reading = 1;
-  serializer->version = version;
-  io->readProc(serializer->userTag, ATLA_USER_TAG_LEN, io->user);
-  io->readProc(atla_tag, 4, io->user);
-  io->readProc(&serializer->version, sizeof(serializer->version), io->user);
-  io->seekProc(-((int64_t)sizeof(uint32_t) * 2), eSeekOffset_End, io->user);
-  io->readProc(&serializer->objectListLen, sizeof(uint32_t), io->user);
-  io->readProc(&string_table_len, sizeof(uint32_t), io->user);
-  serializer->objectList =
-    mem->alloc(sizeof(atAtlaTypeData_t) * serializer->objectListLen, mem->user);
-  serializer->objectListRes = serializer->objectListLen;
-  serializer->rStrings = mem->alloc(string_table_len, mem->user);
-  io->seekProc(-(int64_t)(serializer->objectListLen * sizeof(atAtlaTypeData_t) +
-                 string_table_len + sizeof(uint32_t) * 2),
-               eSeekOffset_Current,
-               io->user);
-  io->readProc(serializer->rStrings, string_table_len, io->user);
-  io->readProc(serializer->objectList,
-               serializer->objectListLen * sizeof(atAtlaTypeData_t),
-               io->user);
-
-  for (uint32_t i = 0, n = serializer->objectListLen; i < n; ++i) {
-    serializer->objectList[i].name.ptr =
-      serializer->objectList[i].flags & at_rflag_hasname
-        ? serializer->rStrings + serializer->objectList[i].name.offset
-        : NULL;
-    if (serializer->objectList[i].name.ptr) {
-      uintptr_t tidx = ((uintptr_t)ht_table_find(
-        &serializer->ctx->typeLUT, serializer->objectList[i].name.ptr));
-      atla_assert(strcmp(serializer->ctx->types[tidx].name,
-                    serializer->objectList[i].name.ptr) == 0, "Name mismatch");
-      atla_assert((uint32_t)serializer->ctx->types[tidx].size == serializer->ctx->types[tidx].size,
-        "int overflow");
-      serializer->objectList[i].size = (uint32_t)serializer->ctx->types[tidx].size;
-    }
-  }
-}
-
-// TODO: change this to just read list of objects an parse them all. 
-ATLA_EXPORT void ATLA_API atSerializeReadRoot(atAtlaSerializer_t*    serializer,
-                         void*                  dest,
-                         atSerializeTypeProc_t* proc, uint32_t type_ver) {
-  atioaccess_t* io = serializer->io;
-  // check that all objects have memory allocated for them.
-  for (uint32_t i = 0, n = serializer->objectListLen; i < n; ++i) {
-    if (serializer->objectList[i].rmem.ptr == 0) {
-      atla_assert(
-        false,
-        "Object in the object list hasn't been assigned memory to read into");
-      return;
-    }
-  }
-
-  // TODO: change this to just read list of objects an parse them all. Can we
-  // just skip this call and use the loop below?
-  io->seekProc(
-    ATLA_USER_TAG_LEN + sizeof(uint32_t) + 4, eSeekOffset_Begin, io->user);
-  (*proc)(serializer, type_ver, dest);
-
-  int work_to_do = 0;
-  do {
-    for (uint32_t i = 0, n = serializer->objectListLen; i < n; ++i) {
-      atAtlaTypeData_t* tdata = &serializer->objectList[i];
-      if (tdata->name.ptr) {
-        if (tdata->proc.ptr) {
-          io->seekProc(tdata->foffset, eSeekOffset_Begin, io->user);
-          for (uint32_t j = 0, m = tdata->count; j < m; ++j) {
-            (*tdata->proc.ptr)(serializer, tdata->version, (uint8_t*)tdata->rmem.ptr + (tdata->size * j));
-          }
-        } else {
-          work_to_do = 1;
-        }
-      } else {
-        io->seekProc(tdata->foffset, eSeekOffset_Begin, io->user);
-        io->readProc(tdata->rmem.ptr, tdata->size * tdata->count, io->user);
-      }
-    }
-  } while (work_to_do);
-}
-
-ATLA_EXPORT void ATLA_API atSerializeReadFinalize(atAtlaSerializer_t* serializer) {
-  atMemoryHandler_t* mem = serializer->mem;
-  mem->free(serializer->rStrings, mem->user);
-  mem->free(serializer->objectList, mem->user);
-  memset(serializer, 0, sizeof(atAtlaSerializer_t));
-}
-
-#define FVN_OFFSET_BASIS (0xcbf29ce484222325)
-#define FVN_PRIME (0x100000001b3)
-
-static uint32_t hash_key(void const* key) {
-  // murmur hash would be good here. Temp use FVN-1a
-  size_t hash = FVN_OFFSET_BASIS;
-  for (char const* c = (char const*)key; *c; ++c) {
-    hash = (hash ^ *c) * FVN_PRIME;
-  }
-  return (uint32_t)hash;
-}
-
-static int compare_key(void const* lhs, void const* rhs) {
-  return strcmp((char const*)lhs, (char const*)rhs);
-}
-
-static void value_free(void const* key, void* value) {}
-
-ATLA_EXPORT void ATLA_API
-atCreateAtlaContext(atAtlaContext_t*         ctx,
-                                  atMemoryHandler_t const* mem_handler) {
-  if (mem_handler) {
-    ctx->mem = *mem_handler;
+  atla_ObjectRef_t* ret = ctx->activePool->objRefs + ctx->activePool->nextIndex;
+  // insertion sort
+  if (ctx->activePool->nextIndex == 0) {
+    ctx->activePool->ptrs[0].ptrBegin = (uintptr_t)ptr;
+    ctx->activePool->ptrs[0].ptrEnd = (uintptr_t)ptr + len;
+    ctx->activePool->ptrs[0].index = 0;
   } else {
-    ctx->mem.alloc = atla_malloc;
-    ctx->mem.ralloc = atla_realloc;
-    ctx->mem.free = atla_free;
-    ctx->mem.user = NULL;
+    atsize_t at = ctx->activePool->nextIndex;
+    for (atsize_t i = 0, n = ctx->activePool->nextIndex; i < n; ++i) {
+      if (ctx->activePool->ptrs[i].ptrBegin > (uintptr_t)ptr) {
+        memmove(&ctx->activePool->ptrs[i + 1], &ctx->activePool->ptrs[i], sizeof(atla_PointerIndexPair_t) * (n - i));
+        at = i;
+        break;
+      }
+    }
+    ctx->activePool->ptrs[at].ptrBegin = (uintptr_t)ptr;
+    ctx->activePool->ptrs[at].ptrEnd = (uintptr_t)ptr + len;
+    ctx->activePool->ptrs[at].index = ctx->activePool->nextIndex;
   }
-  ctx->typesCount = 0;
-  uint32_t block_count = 16;
-  ctx->types =
-    (*ctx->mem.alloc)(sizeof(atAtlaTInfo_t) * block_count, ctx->mem.user);
-  ht_table_init(&ctx->typeLUT,
-                hash_key,
-                compare_key,
-                value_free,
-                ctx->mem.ralloc,
-                ctx->mem.free,
-                ctx->mem.user);
+  ctx->activePool->nextIndex++;
+  if ((uintptr_t)ptr < ctx->activePool->low) ctx->activePool->low = (uintptr_t)ptr;
+  if ((uintptr_t)ptr + len > ctx->activePool->high) ctx->activePool->high = (uintptr_t)ptr + len;
+  return ret;
 }
 
-ATLA_EXPORT void ATLA_API atContextRegisterType(atAtlaContext_t* ctx,
-                                    char const*      name,
-                                    size_t           size) {
-  uint32_t prev_types_count = ctx->typesCount;
-  ++ctx->typesCount;
-  if (((ctx->typesCount + 15) & ~15) > ((prev_types_count + 15) & ~15)) {
-    uint32_t block_count = ((ctx->typesCount + 15) & ~15);
-    ctx->types = (*ctx->mem.ralloc)(
-      ctx->types, sizeof(atAtlaTInfo_t) * block_count, ctx->mem.user);
+static void alta_FlushIOBuffer(atla_Context_t* ctx) {
+  // TODO:
+}
+
+static int atla_SendToIOBuffer(atla_Context_t* ctx, void const* v, atsize_t c) {
+  // TODO: check, object size is respected
+  // TODO: store in io buffer, and flush if needed.
+  ctx->io.write(v, c, ctx->io.user);
+  return ATLA_EOK;
+}
+
+static int atla_read_from_io_buffer(atla_Context_t* ctx, void* v, atsize_t c) {
+  ctx->io.read(v, c, ctx->io.user);
+  return ATLA_EOK;
+}
+
+int atla_InitializeAtlaContext(atla_Context_t* ctx, atla_GetTypeInfo fn1, atla_GetTypePointerOffset fn2) {
+  if (ctx->status & 1) return ATLA_EC_ALREADY;
+  memset(ctx, 0, sizeof(*ctx));
+  ctx->status = 1;
+  ctx->typeInfoFn = fn1;
+  ctx->typePointerOffsetFn = fn2;
+  return ATLA_EOK;
+}
+
+int atla_AssignIOAccess(atla_Context_t* ctx, atla_ioaccess_t* io) {
+  ctx->io = *io;
+  return ATLA_EOK;
+}
+
+int atla_AssignIOBuffer(atla_Context_t* ctx, atbyte* io_buffer, atsize_t io_buffer_size) {
+  ctx->ioBuffer = io_buffer;
+  ctx->ioBufferLimit = io_buffer_size;
+  ctx->ioBufferUsed = 0;
+  return ATLA_EOK;
+}
+
+int atla_fwrite_begin(atla_Context_t* ctx) {
+  if (!ctx->io.write) return ATLA_IO_UNSUPPORTED;
+  ctx->header.blkHeader.fourCCBytes[0] = 'A';
+  ctx->header.blkHeader.fourCCBytes[1] = 'T';
+  ctx->header.blkHeader.fourCCBytes[2] = 'L';
+  ctx->header.blkHeader.fourCCBytes[3] = 'A';
+  smd_assert(ctx->header.blkHeader.fourCC == smd_make_fourCC('A', 'T', 'L', 'A'));
+  ctx->header.blkHeader.size = 16;
+  ctx->header.blkHeader.version = 1;
+  ctx->nextObjectID = 1;
+  ctx->objectCount = 0;
+  return ATLA_EOK;
+}
+
+int atla_fwrite_begin_object_list(atla_Context_t* ctx) {
+  ctx->objectCount = 0;
+  ctx->write.objectList = NULL;
+  ctx->write.objectListEnd = NULL;
+  return ATLA_EOK;
+}
+
+int atla_fwrite_add_object_to_list(atla_Context_t* ctx, atuint32 type_id, atsize_t count, void* ptr, atsize_t len, atla_ObjectRef_t** obj_out) {
+  atla_ObjectRef_t* obj = allocObjectRef(ctx, ptr, len);
+  *obj_out = obj;
+  if (obj == NULL) return ATLA_EC_OBJECT_REF_POOL_EXHAUSTED;
+  obj->objectID = ctx->nextObjectID++;
+  obj->typeID = type_id;
+  if (type_id < atla_type_composite) {
+    obj->runtimeSize = obj->diskSize = BaseTypeSizeLookup[type_id];
+    obj->version = 1;
+  } else {
+    ctx->typeInfoFn(type_id, &obj->runtimeSize, &obj->version, &obj->diskSize);
   }
-  ht_table_insert(&ctx->typeLUT, name, at_itoptr(prev_types_count));
-  ctx->types[prev_types_count].name = name;
-  ctx->types[prev_types_count].size = size;
+  obj->count = count;
+  obj->ownerCtx = ctx;
+  obj->dataPtr = ptr;
+  obj->dataLen = len;
+  obj->flags = 0;
+  obj->next = NULL;
+  ctx->objectCount++;
+  if (ctx->write.objectListEnd) ctx->write.objectListEnd->next = obj;
+  ctx->write.objectListEnd = obj;
+  if (!ctx->write.objectList) ctx->write.objectList = obj;
+  // TODO: error check for overlapping pointers?
+  return ATLA_EOK;
 }
 
-ATLA_EXPORT void ATLA_API atDestroyAtlaContext(atAtlaContext_t* ctx) {
-  ht_table_destroy(&ctx->typeLUT);
-  (*ctx->mem.free)(ctx->types, ctx->mem.user);
-}
-
-ATLA_EXPORT size_t ATLA_API atUtilCalcReadMemRequirements(atAtlaSerializer_t* ser) {
-  size_t total_mem = 0;
-  ht_hash_table_t* ht = &ser->ctx->typeLUT;
-  atAtlaTInfo_t* tlist = ser->ctx->types;
-  for (uint32_t i = 0, n = ser->objectListLen; i < n; ++i) {
-    char const* type_name = ser->objectList[i].name.ptr;
-    if (type_name == NULL) {
-      total_mem += ser->objectList[i].size * ser->objectList[i].count;
-    } else {
-      uintptr_t type_idx = (uintptr_t)ht_table_find(ht, type_name);
-      total_mem += tlist[type_idx].size * ser->objectList[i].count;
+int atla_fwrite_end_object_list(atla_Context_t* ctx) {
+  // write the header
+  atla_fwrite_u32(ctx, ctx->header.blkHeader.fourCC);
+  atla_fwrite_u32(ctx, ctx->header.blkHeader.version);
+  atla_fwrite_u32(ctx, ctx->header.blkHeader.size);
+  // calculate the file object list block size
+  atla_fwrite_u32(ctx, atla_FileObjectList_fourCC);
+  atla_fwrite_u32(ctx, atla_FileObjectList_version);
+  atla_fwrite_u32(ctx, atla_FileObjectList_disksize + (atla_FileObjectEntry_disksize * ctx->objectCount));
+  // write the file object list
+  atla_ObjectRefPool_t* pool = ctx->objectPool;
+  atsize_t              current_pool_index = 0;
+  for (atsize_t i = 0, n = ctx->objectCount; i < n; ++i) {
+    smd_assert(pool);
+    atla_fwrite_u32(ctx, pool->objRefs[current_pool_index].typeID);
+    atla_fwrite_u32(ctx, pool->objRefs[current_pool_index].objectID);
+    atla_fwrite_u64(ctx, pool->objRefs[current_pool_index].count);
+    if (++current_pool_index >= pool->nextIndex) {
+      current_pool_index = 0;
+      pool = pool->next;
     }
   }
-  return total_mem;
+
+  ctx->currentObj = ctx->write.objectList;
+  return ATLA_EOK;
 }
 
-ATLA_EXPORT int ATLA_API
-atUtilAssignReadMem(atAtlaSerializer_t* ser, void* mem, size_t len) {
-  uint8_t*    memp = (uint8_t*)(mem);
-  uint8_t* memend = memp + len;
-  ht_hash_table_t* ht = &ser->ctx->typeLUT;
-  atAtlaTInfo_t* tlist = ser->ctx->types;
-  for (uint32_t i = 0, n = ser->objectListLen; i < n; ++i) {
-    if (memp >= memend) return 0;
-    char const* type_name = ser->objectList[i].name.ptr;
-    if (type_name == NULL) {
-      ser->objectList[i].rmem.ptr = memp;
-      memp += ser->objectList[i].size * ser->objectList[i].count;
-    } else {
-      ser->objectList[i].rmem.ptr = memp;
-      uintptr_t type_idx = (uintptr_t)ht_table_find(ht, type_name);
-      memp += tlist[type_idx].size * ser->objectList[i].count;
-    }
-  }
-  return 1;
+static int objref_by_pointer_comp(void const* lhs_, void const* rhs_) {
+  atla_PointerIndexPair_t const* s_ptr = lhs_; // search pointer
+  atla_PointerIndexPair_t const* r_ptr = rhs_; // range pointer
+  // not 100% sure this is required.
+  // if (s_ptr->ptrBegin != s_ptr->ptrEnd) {
+  //  s_ptr = rhs_;
+  //  r_ptr = lhs_;
+  //}
+  if (s_ptr->ptrBegin < r_ptr->ptrBegin)
+    return -1;
+  else if (s_ptr->ptrBegin > r_ptr->ptrEnd)
+    return 1;
+  else
+    return 0;
 }
 
-ATLA_EXPORT int ATLA_API atUtilAllocAssignReadMem(atAtlaSerializer_t* ser) {
-  ht_hash_table_t* ht = &ser->ctx->typeLUT;
-  atAtlaTInfo_t* tlist = ser->ctx->types;
-  for (uint32_t i = 0, n = ser->objectListLen; i < n; ++i) {
-    char const* type_name = ser->objectList[i].name.ptr;
-    if (type_name == NULL) {
-      ser->objectList[i].rmem.ptr = ser->mem->alloc(ser->objectList[i].size * ser->objectList[i].count, ser->mem->user);
-    } else {
-      uintptr_t type_idx = (uintptr_t)ht_table_find(ht, type_name);
-      ser->objectList[i].rmem.ptr = ser->mem->alloc(tlist[type_idx].size * ser->objectList[i].count, ser->mem->user);
+atla_ObjectRef_t const* atla_fwrite_find_object_ref_by_ptr(atla_Context_t* ctx, void* ptr) {
+  atla_ObjectRefPool_t* search_pool = NULL;
+  for (atla_ObjectRefPool_t* i = ctx->objectPool; i; i = i->next) {
+    if (ptr >= i->low && ptr <= i->high) {
+      search_pool = i;
+      break;
     }
   }
-  return 1;
+  if (search_pool == NULL) return NULL;
+  // TODO: make faster?
+  for (atuint32 i = 0, n = search_pool->nextIndex; i < n; ++i) {
+    if (ptr >= search_pool->ptrs[i].ptrBegin && ptr < search_pool->ptrs[i].ptrEnd) return &search_pool->objRefs[i];
+  }
+  return NULL;
+}
+
+int atla_fwrite_next_object(atla_Context_t* ctx, atla_ObjectLocation_t* oloc) {
+  atla_ObjectRef_t* ret;
+  do {
+    ret = ctx->currentObj;
+    if (!ret) return ATLA_EC_END_OF_LIST;
+    // mark the objects as started (flag) ?
+    ctx->currentObj = ret->next;
+    // store total size
+    ctx->bytesToWrite = ret->diskSize;
+    // reset byte count
+    ctx->bytesWritten = 0;
+    // Write header
+    atla_fwrite_u32(ctx, atla_FileObject_fourCC);
+    atla_fwrite_u32(ctx, atla_FileObject_version);
+    atla_fwrite_u32(ctx, atla_FileObject_disksize + ret->diskSize);
+    atla_fwrite_u32(ctx, ret->typeID);
+    atla_fwrite_u32(ctx, ret->objectID);
+    atla_fwrite_u32(ctx, ret->version);
+    atla_fwrite_u64(ctx, ret->count);
+
+    if (ret->typeID < atla_type_composite) {
+      // raw type, we can handle this
+      atla_fwrite_u8p(ctx, ret->dataPtr, ret->count * BaseTypeSizeLookup[ret->typeID]);
+      atla_fwrite_end_object(ctx);
+    } else {
+      oloc->count = ret->count;
+      oloc->objectID = ret->objectID;
+      oloc->typeID = ret->typeID;
+      oloc->version = ret->version;
+      oloc->dataPtr = ret->dataPtr;
+    }
+  } while (ret->typeID < atla_type_composite);
+  return ATLA_EOK;
+}
+
+/*int atla_fwrite_begin_object(atla_Context_t* ctx, atla_ObjectRef_t const* obj, atsize_t expected_byte_count) {
+  // validate obj belongs to ctx
+  if (obj->ownerCtx != ctx) return ATLA_EC_UNKNOWN_OBJ;
+  // mark the objects as started (flag)
+  ctx->currentObj = obj;
+  // store total size
+  ctx->bytesToWrite = expected_byte_count;
+  // reset byte count
+  ctx->bytesWritten = 0;
+  // Write header
+  atla_fwrite_u32(ctx, atla_FileObject_fourCC);
+  atla_fwrite_u32(ctx, atla_FileObject_version);
+  atla_fwrite_u32(ctx, atla_FileObject_disksize + expected_byte_count);
+  atla_fwrite_u32(ctx, obj->typeID);
+  atla_fwrite_u32(ctx, obj->objectID);
+  atla_fwrite_u32(ctx, obj->version);
+  atla_fwrite_u64(ctx, obj->count);
+  return ATLA_EOK;
+}*/
+
+int atla_fwrite_end_object(atla_Context_t* ctx) {
+  // mark the object as ended
+  // ctx->currentObj = ctx->currentObj->next;
+  // validate bytes written
+  return ctx->bytesWritten <= ctx->bytesToWrite ? ATLA_EOK : ATLA_EC_OBJECT_LEN_OVERRUN;
+}
+
+int atla_fwrite_end(atla_Context_t* ctx) {
+  // flush IO buffer if needed.
+  alta_FlushIOBuffer(ctx);
+  return ATLA_EOK;
+}
+
+int atla_fwrite_i8(atla_Context_t* ctx, atint8 val) {
+  return atla_fwrite_i8p(ctx, &val, 1);
+}
+int atla_fwrite_i8p(atla_Context_t* ctx, atint8 const* val, atsize_t count) {
+  return atla_SendToIOBuffer(ctx, val, sizeof(*val) * count);
+}
+int atla_fwrite_u8(atla_Context_t* ctx, atuint8 val) {
+  return atla_fwrite_u8p(ctx, &val, 1);
+}
+int atla_fwrite_u8p(atla_Context_t* ctx, atuint8 const* val, atsize_t count) {
+  return atla_SendToIOBuffer(ctx, val, sizeof(*val) * count);
+}
+int atla_fwrite_i16(atla_Context_t* ctx, atint16 val) {
+  return atla_fwrite_i16p(ctx, &val, 1);
+}
+int atla_fwrite_i16p(atla_Context_t* ctx, atint16 const* val, atsize_t count) {
+  return atla_SendToIOBuffer(ctx, val, sizeof(*val) * count);
+}
+int atla_fwrite_u16(atla_Context_t* ctx, atuint16 val) {
+  return atla_fwrite_u16p(ctx, &val, 1);
+}
+int atla_fwrite_u16p(atla_Context_t* ctx, atuint16 const* val, atsize_t count) {
+  return atla_SendToIOBuffer(ctx, val, sizeof(*val) * count);
+}
+int atla_fwrite_i(atla_Context_t* ctx, atint val) {
+  return atla_fwrite_ip(ctx, &val, 1);
+}
+int atla_fwrite_ip(atla_Context_t* ctx, atint const* val, atsize_t count) {
+  return atla_SendToIOBuffer(ctx, val, sizeof(*val) * count);
+}
+int atla_fwrite_u(atla_Context_t* ctx, atuint val) {
+  return atla_fwrite_up(ctx, &val, 1);
+}
+int atla_fwrite_up(atla_Context_t* ctx, atuint const* val, atsize_t count) {
+  return atla_SendToIOBuffer(ctx, val, sizeof(*val) * count);
+}
+int atla_fwrite_i32(atla_Context_t* ctx, atint32 val) {
+  return atla_fwrite_i32p(ctx, &val, 1);
+}
+int atla_fwrite_i32p(atla_Context_t* ctx, atint32 const* val, atsize_t count) {
+  return atla_SendToIOBuffer(ctx, val, sizeof(*val) * count);
+}
+int atla_fwrite_u32(atla_Context_t* ctx, atuint32 val) {
+  return atla_fwrite_u32p(ctx, &val, 1);
+}
+int atla_fwrite_u32p(atla_Context_t* ctx, atuint32 const* val, atsize_t count) {
+  return atla_SendToIOBuffer(ctx, val, sizeof(*val) * count);
+}
+int atla_fwrite_i64(atla_Context_t* ctx, atint64 val) {
+  return atla_fwrite_i64p(ctx, &val, 1);
+}
+int atla_fwrite_i64p(atla_Context_t* ctx, atint64 const* val, atsize_t count) {
+  return atla_SendToIOBuffer(ctx, val, sizeof(*val) * count);
+}
+int atla_fwrite_u64(atla_Context_t* ctx, atuint64 val) {
+  return atla_fwrite_u64p(ctx, &val, 1);
+}
+int atla_fwrite_u64p(atla_Context_t* ctx, atuint64 const* val, atsize_t count) {
+  return atla_SendToIOBuffer(ctx, val, sizeof(*val) * count);
+}
+int atla_fwrite_f32(atla_Context_t* ctx, float val) {
+  return atla_fwrite_f32p(ctx, &val, 1);
+}
+int atla_fwrite_f32p(atla_Context_t* ctx, float const* val, atsize_t count) {
+  return atla_SendToIOBuffer(ctx, val, sizeof(*val) * count);
+}
+int atla_fwrite_f64(atla_Context_t* ctx, double val) {
+  return atla_fwrite_f64p(ctx, &val, 1);
+}
+int atla_fwrite_f64p(atla_Context_t* ctx, double const* val, atsize_t count) {
+  return atla_SendToIOBuffer(ctx, val, sizeof(*val) * count);
+}
+
+int atla_fwrite_obj_pointer(atla_Context_t* ctx, atla_ObjectPointer_t optr) {
+  atla_fwrite_u32(ctx, optr.objectID);
+  atla_fwrite_u32(ctx, optr.memberID);
+  atla_fwrite_u32(ctx, optr.count);
+  return ATLA_EOK;
+}
+
+int atla_fwrite_pointer_to_obj_pointer(atla_Context_t* ctx, void* ptr, atla_ObjectPointer_t* optr) {
+  if (ptr == NULL) {
+    optr->count = 0;
+    optr->objectID = 0;
+    optr->memberID = 0;
+    return ATLA_EOK;
+  }
+  atla_ObjectRef_t const* oref = atla_fwrite_find_object_ref_by_ptr(ctx, ptr);
+  if (!oref) return ATLA_EC_UNKNOWN_OBJ;
+  optr->objectID = oref->objectID;
+  optr->memberID = 0;
+  optr->count = 0;
+  if (oref->dataPtr != ptr) {
+    // handle pointing within range
+    uintptr_t byte_offset = (uintptr_t)ptr - (uintptr_t)oref->dataPtr;
+    atsize_t  rt_size = oref->runtimeSize;
+    if (byte_offset % rt_size != 0) {
+      // Inter member. TODO: Implelment
+      return ATLA_EC_NOT_IMPLEMENTED;
+    } else {
+      optr->count = byte_offset / rt_size;
+    }
+  }
+  return ATLA_EOK;
+}
+
+int atla_fread_begin(atla_Context_t* ctx) {
+  if (!ctx->io.read) return ATLA_IO_UNSUPPORTED;
+  // read the header
+  atla_fread_u32(ctx, &ctx->header.blkHeader.fourCC);
+  atla_fread_u32(ctx, &ctx->header.blkHeader.version);
+  atla_fread_u64(ctx, &ctx->header.blkHeader.size);
+  if (ctx->header.blkHeader.fourCC != atla_FileHeader_fourCC) return ATLA_EC_UNKNOWN_FILE_FORMAT;
+  return ATLA_EOK;
+}
+
+atsize_t atla_fread_get_object_count(atla_Context_t* ctx) {
+  atuint32 fourCC, version_num, disk_size, object_list_size;
+
+  // calculate the file object list block size
+  atla_fread_u32(ctx, &fourCC);      // smd_make_fourCC('O', 'b', 'j', 'L'));
+  atla_fread_u32(ctx, &version_num); // atla_FileObjectList_version);
+  atla_fread_u32(ctx, &disk_size);   // atla_FileObjectList_disksize +
+                                     // (atla_FileObjectEntry_disksize * ctx->objectCount));
+  if (fourCC != atla_FileObjectList_fourCC) return ATLA_EC_UNKNOWN_FILE_FORMAT;
+  if (version_num != atla_FileObjectList_version) return ATLA_EC_UNKNOWN_FILE_FORMAT;
+  object_list_size = (disk_size - atla_FileObjectList_disksize) / atla_FileObjectEntry_disksize;
+  ctx->objectCount = object_list_size;
+  return ctx->objectCount;
+}
+
+// Assign memory for object locations found during read.
+// read the object list and fill location array for reading.
+int atla_fread_assign_object_locations(atla_Context_t* ctx, atla_ObjectLocation_t* arr, atsize_t count) {
+  if (count < ctx->objectCount) return ATLA_EC_OUT_OF_MEMORY;
+  ctx->read.objectList = arr;
+  for (atuint32 i = 0; i < ctx->objectCount; ++i) {
+    atla_fread_u32(ctx, &ctx->read.objectList[i].typeID);
+    atla_fread_u32(ctx, &ctx->read.objectList[i].objectID);
+    atla_fread_u64(ctx, &ctx->read.objectList[i].count);
+  }
+
+  return ATLA_EOK;
+}
+
+// Validate that object pointers are not empty,
+int atla_fread_begin_objects(atla_Context_t* ctx) {
+  for (atuint32 i = 0; i < ctx->objectCount; ++i) {
+    if (ctx->read.objectList[i].dataPtr == NULL) return ATLA_EC_OUT_OF_MEMORY;
+  }
+  ctx->read.currentObject = 0;
+  return ATLA_EOK;
+}
+
+// Begin reading an object from file. Returns the location data (type id, object
+// id, array count, memory pointer).
+int atla_fread_next_object(atla_Context_t* ctx, atla_ObjectLocation_t* ol) {
+  atuint32 fourCC, hdr_version_num, disk_size;
+  atuint32 typeID, objectID, version;
+  atsize_t count;
+  do {
+    if (ctx->read.currentObject >= ctx->objectCount) {
+      return ATLA_EC_END_OF_LIST;
+    }
+    *ol = ctx->read.objectList[ctx->read.currentObject];
+    // read header
+    atla_fread_u32(ctx, &fourCC);
+    atla_fread_u32(ctx, &hdr_version_num);
+    atla_fread_u32(ctx, &disk_size); // atla_FileObject_disksize + expected_byte_count);
+    atla_fread_u32(ctx, &typeID);
+    atla_fread_u32(ctx, &objectID);
+    atla_fread_u32(ctx, &version);
+    atla_fread_u64(ctx, &count);
+    if (ol->typeID != typeID) return ATLA_EC_UNKNOWN_FILE_FORMAT;
+    if (ol->objectID != objectID) return ATLA_EC_UNKNOWN_FILE_FORMAT;
+    if (ol->count != count) return ATLA_EC_UNKNOWN_FILE_FORMAT;
+    if (ol->typeID < atla_type_composite) {
+      atla_fread_u8p(ctx, ol->dataPtr, ol->count * BaseTypeSizeLookup[ol->typeID]);
+    }
+    ctx->read.currentObject++;
+  } while (ol->typeID < atla_type_composite);
+  ol->version = version;
+  return ATLA_EOK;
+}
+
+int atla_fread_skip_obj(atla_Context_t* ctx) {
+  return ATLA_EC_NOT_IMPLEMENTED;
+}
+// Clean up and data for reading. Releases resources assigned after
+// atla_fread_begin() was called, allowing them to be freed.
+int atla_fread_end(atla_Context_t* ctx) {
+  ctx->read.objectList = NULL;
+  return ATLA_EOK;
+}
+
+int atla_fread_i8(atla_Context_t* ctx, atint8* val) {
+  return atla_fread_i8p(ctx, val, 1);
+}
+int atla_fread_i8p(atla_Context_t* ctx, atint8* val, atsize_t count) {
+  return atla_read_from_io_buffer(ctx, val, sizeof(atint8) * count);
+}
+int atla_fread_u8(atla_Context_t* ctx, atuint8* val) {
+  return atla_fread_u8p(ctx, val, 1);
+}
+int atla_fread_u8p(atla_Context_t* ctx, atuint8* val, atsize_t count) {
+  return atla_read_from_io_buffer(ctx, val, sizeof(atuint8) * count);
+}
+int atla_fread_i16(atla_Context_t* ctx, atint16* val) {
+  return atla_fread_i16p(ctx, val, 1);
+}
+int atla_fread_i16p(atla_Context_t* ctx, atint16* val, atsize_t count) {
+  return atla_read_from_io_buffer(ctx, val, sizeof(atint16) * count);
+}
+int atla_fread_u16(atla_Context_t* ctx, atuint16* val) {
+  return atla_fread_u16p(ctx, val, 1);
+}
+int atla_fread_u16p(atla_Context_t* ctx, atuint16* val, atsize_t count) {
+  return atla_read_from_io_buffer(ctx, val, sizeof(atint16) * count);
+}
+int atla_fread_i(atla_Context_t* ctx, atint* val) {
+  return atla_fread_ip(ctx, val, 1);
+}
+int atla_fread_ip(atla_Context_t* ctx, atint* val, atsize_t count) {
+  return atla_read_from_io_buffer(ctx, val, sizeof(atint) * count);
+}
+int atla_fread_u(atla_Context_t* ctx, atuint* val) {
+  return atla_fread_up(ctx, val, 1);
+}
+int atla_fread_up(atla_Context_t* ctx, atuint* val, atsize_t count) {
+  return atla_read_from_io_buffer(ctx, val, sizeof(atuint) * count);
+}
+int atla_fread_i32(atla_Context_t* ctx, atint32* val) {
+  return atla_fread_i32p(ctx, val, 1);
+}
+int atla_fread_i32p(atla_Context_t* ctx, atint32* val, atsize_t count) {
+  return atla_read_from_io_buffer(ctx, val, sizeof(atint32) * count);
+}
+int atla_fread_u32(atla_Context_t* ctx, atuint32* val) {
+  return atla_fread_u32p(ctx, val, 1);
+}
+int atla_fread_u32p(atla_Context_t* ctx, atuint32* val, atsize_t count) {
+  return atla_read_from_io_buffer(ctx, val, sizeof(atuint32) * count);
+}
+int atla_fread_i64(atla_Context_t* ctx, atint64* val) {
+  return atla_fread_i64p(ctx, val, 1);
+}
+int atla_fread_i64p(atla_Context_t* ctx, atint64* val, atsize_t count) {
+  return atla_read_from_io_buffer(ctx, val, sizeof(atint64) * count);
+}
+int atla_fread_u64(atla_Context_t* ctx, atuint64* val) {
+  return atla_fread_u64p(ctx, val, 1);
+}
+int atla_fread_u64p(atla_Context_t* ctx, atuint64* val, atsize_t count) {
+  return atla_read_from_io_buffer(ctx, val, sizeof(atuint64) * count);
+}
+int atla_fread_f32(atla_Context_t* ctx, float* val) {
+  return atla_fread_f32p(ctx, val, 1);
+}
+int atla_fread_f32p(atla_Context_t* ctx, float* val, atsize_t count) {
+  return atla_read_from_io_buffer(ctx, val, sizeof(float) * count);
+}
+int atla_fread_f64(atla_Context_t* ctx, double* val) {
+  return atla_fread_f64p(ctx, val, 1);
+}
+int atla_fread_f64p(atla_Context_t* ctx, double* val, atsize_t count) {
+  return atla_read_from_io_buffer(ctx, val, sizeof(double) * count);
+}
+
+int atla_fread_obj_pointer(atla_Context_t* ctx, atla_ObjectPointer_t* optr) {
+  atla_fread_u32(ctx, &optr->objectID);
+  atla_fread_u32(ctx, &optr->memberID);
+  atla_fread_u32(ctx, &optr->count);
+  return ATLA_EOK;
+}
+void* atla_fread_obj_pointer_to_pointer(atla_Context_t* ctx, atla_ObjectPointer_t optr) {
+  atsize_t rtSize, dSize;
+  atuint32 ver;
+  for (int i = 0, n = ctx->objectCount; i < n; ++i) {
+    if (ctx->read.objectList[i].objectID == optr.objectID) {
+      if (ctx->read.objectList[i].typeID < atla_type_composite) {
+        rtSize = BaseTypeSizeLookup[ctx->read.objectList[i].typeID];
+      } else {
+        ctx->typeInfoFn(ctx->read.objectList[i].typeID, &rtSize, &ver, &dSize);
+      }
+      return (void*)((uintptr_t)ctx->read.objectList[i].dataPtr + (rtSize * optr.count));
+    }
+  }
+  return NULL;
 }

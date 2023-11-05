@@ -1,3 +1,3 @@
-[submodule "smd3"]
-	path = smd3
+[submodule "external/libsmd"]
+	path = external/libsmd
 	url = git@github.com:JoJo2nd/smd3.git

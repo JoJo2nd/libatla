@@ -26,6 +26,19 @@ be
 
 *********************************************************************/
 
+/********************************************************************
+ * atla file format
+ *
+ * + atla header
+ * + atla type & object library
+ * -+ alta object listings [xN]
+ * --+ object id
+ * --+ other meta data
+ * + serialized object data
+ * -+ binary data described by type layout
+ * --+ steam of raw types (int, float, etc) or object references
+ *********************************************************************/
+
 #pragma once
 
 #include <stdlib.h>
@@ -33,14 +46,18 @@ be
 #include <stdio.h>
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif //
+
 #if defined(_WIN32)
-#  if defined(libatla_EXPORTS)
-#    define ATLA_EXPORT __declspec(dllexport)
-#  else
-#    define ATLA_EXPORT __declspec(dllimport)
-#  endif
+#if defined(libatla_EXPORTS)
+#define ATLA_EXPORT __declspec(dllexport)
+#else
+#define ATLA_EXPORT __declspec(dllimport)
+#endif
 #else // non windows
-#  define ATLA_EXPORT
+#define ATLA_EXPORT
 #endif
 
 #if defined(_DEBUG)
@@ -56,45 +73,23 @@ be
 #define ATLA_CALLBACK __cdecl
 #define ATLA_API __cdecl
 
-//#define ATLA_USE_ASSERT (0)
+// #define ATLA_USE_ASSERT (0)
 
 #if !defined(ATLA_USE_ASSERT)
 #define ATLA_USE_ASSERT (0)
 #endif
 
 #if ATLA_USE_ASSERT
-# define atla_assert(cond, msg, ...)
+#define atla_assert(cond, msg, ...)
 #else
-# define atla_assert(cond, msg, ...)
+#define atla_assert(cond, msg, ...)
 #endif
 
 #ifdef COMPILE_LIB_ATLA
 #define ATLA_ENSURE_PRIVATE_HEADER()
 #else
-#define ATLA_ENSURE_PRIVATE_HEADER()                                           \
-  atCompileTimeAssert(0 &&                                                     \
-                      "This header shouldn't be included outside of libatla")
+#define ATLA_ENSURE_PRIVATE_HEADER() atCompileTimeAssert(0 && "This header shouldn't be included outside of libatla")
 #endif
-
-typedef struct ht_hash_elem ht_elem_t;
-
-struct ht_hash_table {
-  uint32_t (*hash_key)(void const* key);
-  int (*compare_key)(void const* a, void const* b);
-  void (*value_free)(void const* k, void* v);
-  void* (*mralloc)(void* ptr, size_t size, void* user);
-  void (*mfree)(void* ptr, void* user);
-
-  ht_elem_t* __restrict buffer;
-  uint32_t* __restrict hashes;
-  void*    user;
-  int      num_elems;
-  int      capacity;
-  int      resize_threshold;
-  uint32_t mask;
-};
-
-typedef struct ht_hash_table ht_hash_table_t;
 
 typedef enum atTypeID {
   atAtomicType = 1,
@@ -112,9 +107,11 @@ typedef enum atCreateFlags { ATLA_READ = 1, ATLA_WRITE = 1 << 1 } atCreateFlags;
 
 #define ATLA_INVALIDPOINTERREF (~0U)
 
-typedef enum atErrorCode {
+enum atla_ErrorCode {
+  ATLA_EC_END_OF_LIST = 1,
   ATLA_EOK = 0,
   ATLA_NOMEM = -1,
+  ATLA_EC_OUT_OF_MEMORY = -1,
   ATLA_BADFILE = -2,
   ATLA_DUPLICATE_DATA = -3,
   ATLA_NOTSUPPORTED = -4,
@@ -125,7 +122,18 @@ typedef enum atErrorCode {
   ATLA_ENOTFOUND = -9,
   ATLA_EOUTOFRANGE = -10,
   ATLA_INCORRECT_TYPE_VERSION = -11,
-} atErrorCode;
+  ATLA_IO_UNSUPPORTED = -12,
+  ATLA_EC_OBJECT_REF_POOL_EXHAUSTED = -13,
+  ATLA_EC_UNKNOWN_OBJ = -14,
+  ATLA_EC_OBJECT_LEN_OVERRUN = -15,
+  ATLA_EC_ALREADY = -16,
+  ATLA_EC_UNKNOWN_FILE_FORMAT = -17,
+  ATLA_EC_NOT_IMPLEMENTED = -18,
+  ATLA_EC_TYPE_NOT_KNOWN = -19,
+};
+
+typedef enum atla_ErrorCode atErrorCode;
+typedef enum atla_ErrorCode atla_ErrorCode;
 
 typedef size_t             atsize_t;
 typedef unsigned long long atuint64;
@@ -138,322 +146,203 @@ typedef unsigned short     atuint16;
 typedef signed short       atint16;
 typedef signed char        atint8;
 typedef unsigned char      atuint8;
-typedef atuint8            atbyte;
 typedef char               atchar;
+typedef atchar             atbyte;
 typedef atuint8            atbool;
 typedef atuint64           atUUID_t;
 
-#ifdef __cplusplus
-extern "C" {
-#endif //
 
 /*
- * Main Include for alta lib
- **/
+ * V2 interface
+ */
 
-typedef void*(ATLA_CALLBACK* atMallocProc)(atsize_t size, void* user);
-typedef void*(ATLA_CALLBACK* atReallocProc)(void*    ptr,
-                                            atsize_t size,
-                                            void*    user);
-typedef void(ATLA_CALLBACK* atFreeProc)(void* ptr, void* user);
+typedef enum atla_Type {
+  atla_type_none = 0,
 
-struct atMemoryHandler {
-  atMallocProc  alloc;
-  atReallocProc ralloc;
-  atFreeProc    free;
-  void*         user;
-};
+  atla_type_int8,
+  atla_type_char,
+  atla_type_int16,
+  atla_type_int32,
+  atla_type_int64,
 
-typedef struct atMemoryHandler atMemoryHandler_t;
+  atla_type_uint8,
+  atla_type_uint16,
+  atla_type_uint32,
+  atla_type_uint64,
 
-typedef enum atSeekOffset {
-  eSeekOffset_Begin = SEEK_SET,
-  eSeekOffset_Current = SEEK_CUR,
-  eSeekOffset_End = SEEK_END
-} atSeekOffset;
+  atla_type_float,
+  atla_type_double,
 
-typedef void(ATLA_CALLBACK* atIOReadProc)(void*    pBuffer,
-                                          uint32_t size,
-                                          void*    user);
-typedef void(ATLA_CALLBACK* atIOWriteProc)(void const* pBuffer,
-                                           uint32_t    size,
-                                           void*       user);
-typedef uint32_t(ATLA_CALLBACK* atIOSeekProc)(int64_t     offset,
-                                              atSeekOffset from,
-                                              void*        user);
-typedef int64_t(ATLA_CALLBACK* atIOTellProc)(void* user);
+  atla_type_composite,
 
-typedef struct atioaccess_t {
-  atIOReadProc  readProc;
-  atIOWriteProc writeProc;
-  atIOSeekProc  seekProc;
-  atIOTellProc  tellProc;
-  void*         user;
-} atioaccess_t;
+  atla_type_custom_type_id_first,
+} atla_Type;
 
-#define ATLA_USER_TAG_LEN (32)
+#define ATLA_TYPE_ID_MASK (0xFFFFFFF0)
+#define ATLA_TYPE_ID_SHIFT (8)
+#define ATLA_INVALID_TYPE_ID (0)
 
-typedef uint64_t  at_loc_t;
-typedef uintptr_t at_handle_t;
+typedef enum atla_SeekOffset { atla_SeekOffset_Begin = SEEK_SET, atla_SeekOffset_Current = SEEK_CUR, atla_SeekOffset_End = SEEK_END } atla_SeekOffset;
 
-#define at_invalid_handle (0)
+typedef void(ATLA_CALLBACK* atla_IOReadProc)(void* pBuffer, atsize_t size, void* user);
+typedef void(ATLA_CALLBACK* atla_IOWriteProc)(void const* pBuffer, atsize_t size, void* user);
+typedef atsize_t(ATLA_CALLBACK* atla_IOSeekProc)(int64_t offset, atla_SeekOffset from, void* user);
+typedef atsize_t(ATLA_CALLBACK* atla_IOTellProc)(void* user);
 
-typedef struct atAtlaSerializer atAtlaSerializer_t;
+typedef int(ATLA_CALLBACK* atla_GetTypeInfo)(int type_id, atsize_t* runtimesize, atuint32* version, atsize_t* disksize);
+typedef void*(ATLA_CALLBACK* atla_GetTypePointerOffset)(void* base, int type_id, int member_id);
 
-typedef int(atSerializeTypeProc_t)(atAtlaSerializer_t*, uint32_t version, void*);
+typedef struct atla_ioaccess {
+  atla_IOReadProc  read;
+  atla_IOWriteProc write;
+  void*            user;
+} atla_ioaccess_t;
 
-#define at_rflag_root (0x1)
-#define at_wflag_processed (0x2)
-#define at_rflag_hasname (0x4)
 
-typedef struct atAtlaTInfo {
-  char const* name;
-  size_t      size;
-} atAtlaTInfo_t;
+typedef struct atla_FileBlockHeader atla_FileBlockHeader_t;
+typedef struct atla_FileHeader      atla_FileHeader_t;
+typedef struct atla_Context         atla_Context_t;
+typedef struct atla_ObjectRef       atla_ObjectRef_t;
+typedef struct atla_ObjectRefPool   atla_ObjectRefPool_t;
 
-struct atAtlaContext_t {
-  atMemoryHandler_t mem;
-  ht_hash_table_t   typeLUT;
-  atAtlaTInfo_t*    types;
-  uint32_t          typesCount;
-};
-typedef struct atAtlaContext_t atAtlaContext_t;
-
-typedef struct atAtlaFileHeader_t {
-  char fourcc[4];
+struct atla_FileBlockHeader {
   union {
-    struct {
-      uint16_t major, minor, revision, patch;
-    } fileFormat;
-    size_t fileFormatVersion;
+    char     fourCCBytes[4];
+    atuint32 fourCC;
   };
-  size_t objectCount;
-  size_t stringTableLen;
-} atAtlaFileHeader_t;
-
-typedef struct atAtlaFileFooter_t {
-  //?
-} atAtlaFileFooter_t;
-
-struct atAtlaTypeData {
-  union {
-    at_loc_t    offset;
-    char const* ptr;
-  } name; // if NULL then this is a native type (e.g. int, float, char, etc)
-  union {
-    at_loc_t               offset;
-    atSerializeTypeProc_t* ptr;
-  } proc; // NULL, if name is NULL
-  void*    data;
-  uint32_t size;
-  uint32_t count;
-  uint32_t id;
-  at_loc_t foffset; // location with the atla file
-  // extra members needed for reads
-  union {
-    at_loc_t offset;
-    void*    ptr;
-  } rmem; // always null for write, on read filled in by user
-  uint32_t flags;
-  uint32_t version; // per type versioning
-};
-typedef struct atAtlaTypeData atAtlaTypeData_t;
-
-typedef struct atAddressIDPair {
-  void*    address;
-  uint32_t index;
-} atAddressIDPair_t;
-
-struct atAtlaSerializer {
-  atAtlaContext_t*   ctx;
-  atMemoryHandler_t* mem;
-  atioaccess_t*      io;
-  uint32_t           reading;
-  uint32_t           version;
-  uint32_t           nextID;
-  uint32_t           depth;
-  uint32_t           objectListLen, objectListRes;
-  atAtlaFileHeader_t fileHeader;
-  atAtlaTypeData_t*  objectList;
-  atAddressIDPair_t* idList;
-  char*              rStrings;
-  char               userTag[ATLA_USER_TAG_LEN];
+  atuint32 version;
+  atuint64 size;
 };
 
-typedef struct atAtlaRuntimeTypeInfo {
-  char const*                   name;
-  size_t                        size;
-  struct atAtlaRuntimeTypeInfo* next;
-} atAtlaRuntimeTypeInfo_t;
-
-typedef struct atTypeVariant_t {
-  union {
-    int8_t   asInt8;
-    int16_t  asInt16;
-    int32_t  asInt32;
-    uint8_t  asUint8;
-    uint16_t asUint16;
-    uint32_t asUint32;
-    float    asFloat;
-    double   asDouble;
-  };
-  uint8_t term;
-} atTypeVariant_t;
-
-enum {
-  at_rinfo_none = 0,
-  at_rinfo_deprecated = 0x01,
-  at_rinfo_pointer = 0x02,
-  at_rinfo_dynamic_array = 0x04,
-  at_rinfo_fixed_array = 0x08,
+struct atla_FileHeader {
+  atla_FileBlockHeader_t blkHeader;
 };
 
-enum {
-  at_rinfo_type_none = 0,
+typedef struct atla_ObjectLocation {
+  atuint32 objectID;
+  atuint32 typeID;
+  atuint32 version;
+  atsize_t count;
+  atbyte*  dataPtr;
+} atla_ObjectLocation_t;
 
-  at_rinfo_type_int8,
-  at_rinfo_type_char,
-  at_rinfo_type_int16,
-  at_rinfo_type_int32,
-  at_rinfo_type_int64,
+typedef struct atla_ObjectPointer {
+  atuint32 objectID;
+  atuint32 count;
+  atuint32 memberID;
+} atla_ObjectPointer_t;
 
-  at_rinfo_type_uint8,
-  at_rinfo_type_uint16,
-  at_rinfo_type_uint32,
-  at_rinfo_type_uint64,
-
-  at_rinfo_type_float,
-  at_rinfo_type_double,
-
-  at_rinfo_type_user,
-};
-
-typedef struct atAtlaReflInfo_t {
-  char const* name;
-  size_t      arrayCount;
-  uint32_t    id;
-  uint32_t    flags;
-  uint32_t    verAdd, verRem;
-  uint32_t    type;
-  ptrdiff_t   offset;
+struct atla_Context {
+  atla_ioaccess_t           io;
+  atla_GetTypeInfo          typeInfoFn;
+  atla_GetTypePointerOffset typePointerOffsetFn;
+  atla_FileHeader_t         header;
+  atla_ObjectRefPool_t *    objectPool, *activePool, *sentinelPool;
+  atbyte*                   ioBuffer;
+  atsize_t                  ioBufferLimit, ioBufferUsed;
+  atuint32                  nextObjectID;
+  atuint32                  objectCount;
+  atla_ObjectRef_t*         currentObj;
+  atsize_t                  bytesWritten, bytesToWrite;
+  atuint32                  status;
   struct {
-    struct atAtlaReflInfo_t const* reflData;
-  } typeExtra;
-  atTypeVariant_t* defaultVal;
-  atTypeVariant_t* minVal;
-  atTypeVariant_t* maxVal;
-  uint32_t memberCount;
-  struct atAtlaReflInfo_t* members;
-} atAtlaReflInfo_t;
+    atla_ObjectLocation_t* objectList;
+    atuint32               currentObject;
+  } read;
+  struct {
+    atla_ObjectRef_t *objectList, *objectListEnd;
+  } write;
+};
 
-extern atAtlaRuntimeTypeInfo_t atla_runtime_type_list;
+atsize_t atla_GetObjectRefPoolRequiredSize(atuint32 max_objects);
 
-ATLA_EXPORT void ATLA_API atSerializeWriteBegin(atAtlaSerializer_t* serializer,
-                           atAtlaContext_t*    ctx,
-                           char const*         usertag,
-                           atioaccess_t*       context,
-                           uint32_t            version);
-ATLA_EXPORT void ATLA_API atSerializeWriteRoot(atAtlaSerializer_t*    serializer,
-                          void*                  data,
-                          atSerializeTypeProc_t* proc);
-ATLA_EXPORT void ATLA_API atSerializeWriteProcessPending(atAtlaSerializer_t* serializer);
-ATLA_EXPORT void ATLA_API atSerializeWriteFinalize(atAtlaSerializer_t* serializer);
+int atla_InitializeAtlaContext(atla_Context_t* ctx, atla_GetTypeInfo fn1, atla_GetTypePointerOffset fn2);
+int atla_AssignIOAccess(atla_Context_t* ctx, atla_ioaccess_t* io);
+int atla_AssignIOBuffer(atla_Context_t* ctx, atbyte* io_buffer, atsize_t io_buffer_size);
+int atla_AssignObjectRefPool(atla_Context_t* ctx, void* ptr, atsize_t size);
 
-// Hidden interface functions???
-ATLA_EXPORT void ATLA_API atSerializeWrite(atAtlaSerializer_t* serializer,
-                      void*               src,
-                      uint32_t            element_size,
-                      uint32_t            element_count);
-ATLA_EXPORT uint32_t ATLA_API atSerializeWritePendingBlob(atAtlaSerializer_t* serializer,
-                                     void*               data,
-                                     uint32_t            element_size,
-                                     uint32_t            count);
-ATLA_EXPORT uint32_t ATLA_API atSerializeWritePendingType(atAtlaSerializer_t* serializer,
-                                     void*                  data,
-                                     char const*            name,
-                                     atSerializeTypeProc_t* proc,
-                                     uint32_t               type_ver,
-                                     uint32_t               element_size,
-                                     uint32_t               count);
-
-// uint32_t atSerializeObjRef(atAtlaSerializer_t* serializer, void* src, char
-// const* type_name);
-
-// libatla reading interface
-
-ATLA_EXPORT void ATLA_API atSerializeReadBegin(atAtlaSerializer_t* serializer,
-                          atAtlaContext_t*    ctx,
-                          atioaccess_t*       context,
-                          uint32_t            version);
-
-ATLA_EXPORT void ATLA_API atSerializeReadRoot(atAtlaSerializer_t*    serializer,
-                         void*                  dest,
-                         atSerializeTypeProc_t* proc,
-                         uint32_t type_ver);
-
-ATLA_EXPORT void ATLA_API atSerializeReadFinalize(atAtlaSerializer_t* serializer);
-
-// Hidden interface functions???
-ATLA_EXPORT void ATLA_API atSerializeRead(atAtlaSerializer_t* serializer,
-                     void*               dest,
-                     uint32_t            element_size,
-                     uint32_t            element_count);
-ATLA_EXPORT void ATLA_API atSerializeSkip(atAtlaSerializer_t* serializer,
-                     uint32_t            element_size,
-                     uint32_t            element_count);
-ATLA_EXPORT void* ATLA_API atSerializeReadGetBlobLocation(atAtlaSerializer_t* serializer,
-                                     uint32_t            blob_id);
-
-ATLA_EXPORT void* ATLA_API atSerializeReadTypeLocation(atAtlaSerializer_t*    serializer,
-                                  uint32_t               type_id,
-                                  char const*            name,
-                                  atSerializeTypeProc_t* proc);
-
-// void* atSerializeReadObjRef(atAtlaSerializer_t* serializer);
-
-
-ATLA_EXPORT uint64_t ATLA_API atGetAtlaVersion();
-ATLA_EXPORT void ATLA_API atCreateAtlaContext(atAtlaContext_t*         ctx,
-                                  atMemoryHandler_t const* mem_handler);
-ATLA_EXPORT void ATLA_API atDestroyAtlaContext(atAtlaContext_t*);
-ATLA_EXPORT void ATLA_API atContextRegisterType(atAtlaContext_t* ctx,
-                                    char const*      name,
-                                    size_t           size);
-
-#define atContextReg(ctx, type)                                                \
-  void atla_##type##_reg (atAtlaContext_t* c);                    \
-  atla_##type##_reg ((ctx))
-
-ATLA_EXPORT size_t ATLA_API atUtilCalcReadMemRequirements(atAtlaSerializer_t* ser);
-ATLA_EXPORT int ATLA_API atUtilAssignReadMem(atAtlaSerializer_t* ser, void* mem, size_t len);
-ATLA_EXPORT int ATLA_API atUtilAllocAssignReadMem(atAtlaSerializer_t* ser);
-
-ATLA_EXPORT void ATLA_API atCreateFileIOContext(atioaccess_t* io, char const* path, char const* access);
-
-ATLA_EXPORT void ATLA_API atDestroyFileIOContext(atioaccess_t* io);
-
+int atla_fwrite_begin(atla_Context_t* ctx);
+int atla_fwrite_begin_object_list(atla_Context_t* ctx);
+int atla_fwrite_add_object_to_list(atla_Context_t* ctx, atuint32 type_id, atsize_t count, void* ptr, atsize_t len, atla_ObjectRef_t** obj_out);
+int atla_fwrite_end_object_list(atla_Context_t* ctx);
+atla_ObjectRef_t const* atla_fwrite_find_object_ref_by_ptr(atla_Context_t* ctx, void* ptr);
+int                     atla_fwrite_next_object(atla_Context_t* ctx, atla_ObjectLocation_t* oref);
 /*
+ * The following functions that take pointers must ensure that the pointer value lives within ptr+len > &v >= ptr
+ */
+int atla_fwrite_i8(atla_Context_t* ctx, atint8 val);
+int atla_fwrite_i8p(atla_Context_t* ctx, atint8 const* val, atsize_t count);
+int atla_fwrite_u8(atla_Context_t* ctx, atuint8 val);
+int atla_fwrite_u8p(atla_Context_t* ctx, atuint8 const* val, atsize_t count);
+int atla_fwrite_i16(atla_Context_t* ctx, atint16 val);
+int atla_fwrite_i16p(atla_Context_t* ctx, atint16 const* val, atsize_t count);
+int atla_fwrite_u16(atla_Context_t* ctx, atuint16 val);
+int atla_fwrite_u16p(atla_Context_t* ctx, atuint16 const* val, atsize_t count);
+int atla_fwrite_i(atla_Context_t* ctx, atint val);
+int atla_fwrite_ip(atla_Context_t* ctx, atint const* val, atsize_t count);
+int atla_fwrite_u(atla_Context_t* ctx, atuint val);
+int atla_fwrite_up(atla_Context_t* ctx, atuint const* val, atsize_t count);
+int atla_fwrite_i32(atla_Context_t* ctx, atint32 val);
+int atla_fwrite_i32p(atla_Context_t* ctx, atint32 const* val, atsize_t count);
+int atla_fwrite_u32(atla_Context_t* ctx, atuint32 val);
+int atla_fwrite_u32p(atla_Context_t* ctx, atuint32 const* val, atsize_t count);
+int atla_fwrite_i64(atla_Context_t* ctx, atint64 val);
+int atla_fwrite_i64p(atla_Context_t* ctx, atint64 const* val, atsize_t count);
+int atla_fwrite_u64(atla_Context_t* ctx, atuint64 val);
+int atla_fwrite_u64p(atla_Context_t* ctx, atuint64 const* val, atsize_t count);
+int atla_fwrite_f32(atla_Context_t* ctx, float val);
+int atla_fwrite_f32p(atla_Context_t* ctx, float const* val, atsize_t count);
+int atla_fwrite_f64(atla_Context_t* ctx, double val);
+int atla_fwrite_f64p(atla_Context_t* ctx, double const* val, atsize_t count);
+/*
+ * When serializing a memory value outsize of the current object (possibly, note we can point to ourselves), a new object reference is needed
+ */
+int atla_fwrite_obj_pointer(atla_Context_t* ctx, atla_ObjectPointer_t optr);
+int atla_fwrite_pointer_to_obj_pointer(atla_Context_t* ctx, void* ptr, atla_ObjectPointer_t* optr);
+// int atla_file_ObjectWrite_skip(atla_Context_t* ctx, atla_Type type, atsize_t count);
 
-        Atla -
+int atla_fwrite_end_object(atla_Context_t* ctx);
+int atla_fwrite_end(atla_Context_t* ctx);
 
+int      atla_fread_begin(atla_Context_t* ctx);
+atsize_t atla_fread_get_object_count(atla_Context_t* ctx);
+// Assign memory for object locations found during read.
+int atla_fread_assign_object_locations(atla_Context_t* ctx, atla_ObjectLocation_t* arr, atsize_t count);
+// Validate that object pointers are not empty, read the object list and fill location array for reading.
+int atla_fread_begin_objects(atla_Context_t* ctx);
+// Begin reading an object from file. Returns the location data (type id, object id, array count, memory pointer).
+int atla_fread_next_object(atla_Context_t* ctx, atla_ObjectLocation_t* ol);
+int atla_fread_skip_obj(atla_Context_t* ctx);
+// Clean up and data for reading. Releases resources assigned after atla_fread_begin() was called, allowing them to be freed.
+int atla_fread_end(atla_Context_t* ctx);
 
+int atla_fread_i8(atla_Context_t* ctx, atint8* val);
+int atla_fread_i8p(atla_Context_t* ctx, atint8* val, atsize_t count);
+int atla_fread_u8(atla_Context_t* ctx, atuint8* val);
+int atla_fread_u8p(atla_Context_t* ctx, atuint8* val, atsize_t count);
+int atla_fread_i16(atla_Context_t* ctx, atint16* val);
+int atla_fread_i16p(atla_Context_t* ctx, atint16* val, atsize_t count);
+int atla_fread_u16(atla_Context_t* ctx, atuint16* val);
+int atla_fread_u16p(atla_Context_t* ctx, atuint16* val, atsize_t count);
+int atla_fread_i(atla_Context_t* ctx, atint* val);
+int atla_fread_ip(atla_Context_t* ctx, atint* val, atsize_t count);
+int atla_fread_u(atla_Context_t* ctx, atuint* val);
+int atla_fread_up(atla_Context_t* ctx, atuint* val, atsize_t count);
+int atla_fread_i32(atla_Context_t* ctx, atint32* val);
+int atla_fread_i32p(atla_Context_t* ctx, atint32* val, atsize_t count);
+int atla_fread_u32(atla_Context_t* ctx, atuint32* val);
+int atla_fread_u32p(atla_Context_t* ctx, atuint32* val, atsize_t count);
+int atla_fread_i64(atla_Context_t* ctx, atint64* val);
+int atla_fread_i64p(atla_Context_t* ctx, atint64* val, atsize_t count);
+int atla_fread_u64(atla_Context_t* ctx, atuint64* val);
+int atla_fread_u64p(atla_Context_t* ctx, atuint64* val, atsize_t count);
+int atla_fread_f32(atla_Context_t* ctx, float* val);
+int atla_fread_f32p(atla_Context_t* ctx, float* val, atsize_t count);
+int atla_fread_f64(atla_Context_t* ctx, double* val);
+int atla_fread_f64p(atla_Context_t* ctx, double* val, atsize_t count);
 
-   ///
-   // New additional ideas for Atla
-   
-   *) Remove unused code files - one header, one source file?
-   *) Allow split & multiple lua files for declaring & defining types. I think each lua file registers (up to) two functions
-      one for declaring, one for defining. These are stored in the lua reg table and called later once all files are parsed
-   *) Fix mid type pointer offsets not working.
-   *) Allow per type versioning. 
-   *) Remove per field version checks - exchange this for whole type up versioning, user defines how to handle up version for each 
-      increment, no skipping versions allowed - could be done with strings of C code given in Lua. 
-      Also, no adding pointered types (because requires allocating mid-read?) this should be enforced by auto gen'd post fix check
-      on up versioning code given by user.
-   *) No mid read allocs. User can ask how much memory needed and then provide it. Same for writes
-   *) Enforce forward only reading.
-   *) Decide how to protect from fuzzing (initial idea, signed block reader abstraction so parsing can ignore the problem?).
-*/
+int   atla_fread_obj_pointer(atla_Context_t* ctx, atla_ObjectPointer_t* optr);
+void* atla_fread_obj_pointer_to_pointer(atla_Context_t* ctx, atla_ObjectPointer_t optr);
 
 #ifdef __cplusplus
 } // extern "C"
