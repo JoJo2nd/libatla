@@ -2,7 +2,11 @@
 #include "atla/atla.h"
 
 #include <memory.h>
+#include <stdlib.h>
 #include <assert.h>
+
+#define at_max(a, b) (((a) > (b)) ? (a) : (b))
+#define at_min(a, b) (((a) < (b)) ? (a) : (b))
 
 typedef
 struct mem_io {
@@ -23,7 +27,7 @@ void mem_io_write(void const* src, atsize_t size, void* user) {
 
 void mem_io_read(void* dst, atsize_t size, void* user) {
     mem_io_t* f = user;
-    size_t to_read = min(f->reserve - f->tell, size);
+    size_t to_read = at_min(f->reserve - f->tell, size);
     memcpy(dst, f->buffer+f->tell, to_read);
     f->tell += size;
     //return to_read;
